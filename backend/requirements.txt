@@ -1,0 +1,35 @@
+# Python Backend for Discharge Planning Bot
+# Healthcare & API Integration
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+httpx==0.25.2
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+# FHIR & Healthcare Standards
+fhir.resources==7.0.2
+fhirpy==2.0.8
+
+# AI/ML Components
+openai==1.3.5
+langchain==0.0.340
+scikit-learn==1.3.2
+pandas==2.1.3
+numpy==1.25.2
+
+# Security & Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
+# Environment & Config
+python-dotenv==1.0.0
+pydantic-settings==2.1.0
+
+# Utilities
+celery==5.3.4
+redis==5.0.1
