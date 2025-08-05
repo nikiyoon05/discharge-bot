@@ -5,7 +5,7 @@ export const authUserState = atom({
   key: 'authUserState',
   default: {
     id: 'dr-smith-001',
-    name: 'Dr. Sarah Smith',
+    name: 'Discharge Planner!',
     role: 'clinician',
     department: 'Internal Medicine',
     isAuthenticated: true,

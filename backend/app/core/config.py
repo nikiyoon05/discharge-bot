@@ -1,5 +1,5 @@
 """
-Configuration settings for CareExit Discharge Planning Bot
+Configuration settings for Bela Discharge Planning Bot
 """
 
 from pydantic_settings import BaseSettings

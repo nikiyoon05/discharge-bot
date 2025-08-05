@@ -1,0 +1,178 @@
+﻿{
+  "patient": {
+    "id": "patient-12345678",
+    "firstName": "John",
+    "lastName": "Anderson",
+    "gender": "male",
+    "birthDate": "1965-05-19",
+    "age": 60,
+    "address": {
+      "line1": "123 Elm Street",
+      "city": "Palo Alto",
+      "state": "CA",
+      "zip": "94301"
+    },
+    "contact": {
+      "phone": "(650) 555-0123",
+      "emergencyContact": {
+        "name": "Emily Anderson",
+        "relationship": "Daughter",
+        "phone": "(650) 555-0987"
+      }
+    }
+  },
+  "encounter": {
+    "id": "enc-20250801-001",
+    "admissionDate": "2025-08-01T08:14:00Z",
+    "dischargeDate": "2025-08-04T10:42:00Z",
+    "facility": "Stanford University Hospital",
+    "department": "Internal Medicine",
+    "attending": {
+      "name": "Dr. Emily Tran",
+      "npi": "1456789021"
+    },
+    "reason": "Community-acquired pneumonia (RLL)"
+  },
+  "conditions": [
+    {
+      "id": "cond-cap-rll",
+      "code": "J18.9",
+      "description": "Pneumonia, unspecified organism",
+      "onsetDate": "2025-07-28",
+      "clinicalStatus": "resolved",
+      "bodySite": "right lower lobe"
+    }
+  ],
+  "vitals": [
+    {
+      "datetime": "2025-08-01T08:24:00Z",
+      "temperatureC": 38.9,
+      "heartRate": 102,
+      "bloodPressure": "132/78",
+      "respiratoryRate": 22,
+      "oxygenSaturation": 92
+    },
+    {
+      "datetime": "2025-08-04T07:45:00Z",
+      "temperatureC": 36.7,
+      "heartRate": 78,
+      "bloodPressure": "126/74",
+      "respiratoryRate": 16,
+      "oxygenSaturation": 96
+    }
+  ],
+  "labs": [
+    {
+      "test": "WBC",
+      "loinc": "6690-2",
+      "unit": "10^9/L",
+      "values": [
+        { "date": "2025-08-01", "value": 12.3 },
+        { "date": "2025-08-04", "value": 9.2 }
+      ]
+    },
+    {
+      "test": "CRP",
+      "loinc": "1988-5",
+      "unit": "mg/L",
+      "values": [
+        { "date": "2025-08-01", "value": 56.0 },
+        { "date": "2025-08-04", "value": 21.4 }
+      ]
+    },
+    {
+      "test": "Procalcitonin",
+      "loinc": "33959-8",
+      "unit": "ng/mL",
+      "values": [
+        { "date": "2025-08-01", "value": 0.27 },
+        { "date": "2025-08-04", "value": 0.08 }
+      ]
+    },
+    {
+      "test": "Blood culture",
+      "loinc": "600-7",
+      "result": "No growth",
+      "collectionDate": "2025-08-01"
+    }
+  ],
+  "imaging": [
+    {
+      "id": "img-cxr-20250801",
+      "type": "Chest X-ray",
+      "date": "2025-08-01",
+      "findings": "Right lower lobe infiltrate. No effusion.",
+      "impression": "Findings consistent with right lower lobe pneumonia."
+    },
+    {
+      "id": "img-cxr-20250803",
+      "type": "Chest X-ray",
+      "date": "2025-08-03",
+      "findings": "Improving right lower lobe infiltrate. No new consolidation.",
+      "impression": "Interval improvement in pneumonia."
+    }
+  ],
+  "medications": [
+    {
+      "id": "med-azithromycin",
+      "name": "Azithromycin",
+      "dose": "500 mg",
+      "route": "oral",
+      "frequency": "daily",
+      "startDate": "2025-08-03",
+      "duration": "5 days",
+      "status": "active"
+    },
+    {
+      "id": "med-acetaminophen",
+      "name": "Acetaminophen",
+      "dose": "650 mg",
+      "route": "oral",
+      "frequency": "q6h PRN",
+      "indication": "fever or pain",
+      "status": "PRN"
+    }
+  ],
+  "procedures": [],
+  "education": [
+    {
+      "topic": "Pneumonia care and antibiotic adherence",
+      "dateProvided": "2025-08-03",
+      "method": "Verbal and written handout",
+      "patientUnderstood": true
+    },
+    {
+      "topic": "Signs of worsening illness (e.g., fever, dyspnea)",
+      "dateProvided": "2025-08-04",
+      "patientUnderstood": true
+    }
+  ],
+  "dischargeInstructions": {
+    "diet": "Regular",
+    "activity": "Resume as tolerated",
+    "oxygen": "Not required",
+    "homeSupport": "Discharged home with daughter",
+    "pendingOrders": [
+      {
+        "type": "Imaging",
+        "order": "Chest X-ray",
+        "due": "6 weeks from discharge",
+        "status": "Outpatient order placed"
+      }
+    ]
+  },
+  "followUp": [
+    {
+      "provider": "Dr. Laura Greene",
+      "specialty": "Primary Care",
+      "date": "2025-08-09T10:30:00",
+      "location": "Stanford Primary Care Clinic",
+      "confirmed": true
+    }
+  ],
+  "billing": {
+    "diagnosisCodes": ["J18.9"],
+    "lengthOfStayDays": 3,
+    "DRG": "193 - SIMPLE PNEUMONIA & PLEURISY W/O CC/MCC"
+  }
+}

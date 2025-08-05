@@ -1,4 +1,4 @@
-# CareExit Discharge Planning Bot - Backend
+# Bela Discharge Planning Bot - Backend
 
 ## 🏥 Real-World Hospital Discharge Planning Context
 
@@ -107,7 +107,7 @@ cp .env.example .env
 3. **Database Setup:**
 ```bash
 # Create PostgreSQL database
-createdb careexit_db
+createdb bela_db
 
 # Run migrations
 alembic upgrade head
@@ -121,7 +121,7 @@ uvicorn main:app --reload --port 3001
 ### Configuration (.env file)
 ```env
 # Database
-DATABASE_URL=postgresql://user:password@localhost/careexit_db
+DATABASE_URL=postgresql://user:password@localhost/bela_db
 
 # Epic FHIR API
 EPIC_FHIR_BASE_URL=https://fhir.epic.com/interconnect-fhir-oauth

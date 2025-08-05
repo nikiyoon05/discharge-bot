@@ -799,22 +799,28 @@ export default function PatientEHRChart() {
                             {note.content.split('\n\n').map((section, secIndex) => (
                               <div key={secIndex} className="space-y-2">
                                 {section.split('\n').map((line, lineIndex) => {
-                                  const isHeader = line.startsWith('Key Findings:') || 
-                                                   line.startsWith('Discharge Readiness:') || 
-                                                   line.startsWith('Follow-up Recommendations:') ||
-                                                   line.includes('Chief complaint') ||
-                                                   line.includes('Assessment and plan');
+                                  // Main numbered headers (1., 2., 3.)
+                                  const isMainHeader = /^\d+\.\s/.test(line.trim());
+                                  
+                                  // Sub-headers under section 3
+                                  const isSubHeader = line.startsWith('Key Findings:') || 
+                                                     line.startsWith('Discharge Readiness:') || 
+                                                     line.startsWith('Follow-up Recommendations:');
+                                  
+                                  // Bullet points
                                   const isBullet = line.startsWith('•') || line.startsWith('-');
                                   
                                   return (
                                     <div key={lineIndex} className={
-                                      isHeader
-                                        ? 'font-semibold text-purple-800 text-lg mt-4 mb-2 border-b border-purple-200 pb-1'
-                                        : isBullet
-                                          ? 'text-purple-700 ml-4 text-base'
-                                          : line.trim() === ''
-                                            ? 'h-2'
-                                            : 'text-purple-900 text-base'
+                                      isMainHeader
+                                        ? 'font-bold text-purple-800 text-xl mt-6 mb-3 border-b-2 border-purple-300 pb-2'
+                                        : isSubHeader
+                                          ? 'font-semibold text-purple-700 text-lg mt-4 mb-2 border-b border-purple-200 pb-1'
+                                          : isBullet
+                                            ? 'text-purple-700 ml-6 text-base leading-relaxed'
+                                            : line.trim() === ''
+                                              ? 'h-2'
+                                              : 'text-purple-900 text-base leading-relaxed'
                                     }>
                                       {line || '\u00A0'}
                                     </div>

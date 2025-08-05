@@ -1,4 +1,4 @@
-import { Bell, Settings, Moon, Sun, User, LogOut } from 'lucide-react';
+import { Bell, Settings, Moon, Sun, User, LogOut, Stethoscope } from 'lucide-react';
 import { useRecoilState, useRecoilValue } from 'recoil';
 import { themeState, notificationState, authUserState } from '@/store/atoms';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,7 @@ export default function TopNav() {
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">CE</span>
+              <Stethoscope className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
               <h1 className="clinical-h2 text-primary">Bela</h1>

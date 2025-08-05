@@ -101,6 +101,36 @@ const App = () => (
               } 
             />
             <Route 
+              path="/patient/:id/ehr-status" 
+              element={
+                <AuthRoute>
+                  <AppLayout>
+                    <EHRStatusPage />
+                  </AppLayout>
+                </AuthRoute>
+              } 
+            />
+            <Route 
+              path="/patient/:id/discharge-meeting" 
+              element={
+                <AuthRoute>
+                  <AppLayout>
+                    <DischargeMeetingPage />
+                  </AppLayout>
+                </AuthRoute>
+              } 
+            />
+            <Route 
+              path="/patient/:id/out-of-network-scheduling" 
+              element={
+                <AuthRoute>
+                  <AppLayout>
+                    <OutOfNetworkSchedulingPage />
+                  </AppLayout>
+                </AuthRoute>
+              } 
+            />
+            <Route 
               path="/patient/:id/post-discharge-chat"
               element={
                 <AuthRoute>

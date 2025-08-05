@@ -1,0 +1,86 @@
+﻿.DISCHARGESUMMARY
+Patient Name: Anderson, John
+MRN: 12345678
+DOB: 05/19/1965
+Admission Date: 08/01/2025
+Discharge Date: 08/04/2025
+Attending Provider: Tran, Emily, MD
+Discharge Disposition: Home with family
+Discharge Diagnosis:
+* Principal: Community-acquired pneumonia (CAP), right lower lobe
+* Secondary:
+   * Leukocytosis (resolved)
+   * Hypoxemia on admission (resolved)
+   * Functional deconditioning due to acute illness (resolved)
+________________
+
+
+REASON FOR HOSPITALIZATION:
+ Patient presented with 4-day history of fever, productive cough, right-sided pleuritic chest pain, and shortness of breath. Diagnosed with right lower lobe community-acquired pneumonia and admitted for IV antibiotics, monitoring, and supportive care.
+________________
+
+
+HOSPITAL COURSE:
+ 60-year-old male admitted with right lower lobe CAP. Initial labs showed leukocytosis (WBC 12.3), elevated CRP (56), and modestly elevated procalcitonin (0.27). Chest X-ray confirmed RLL infiltrate. He was initiated on ceftriaxone 1g IV q24h and azithromycin 500mg IV daily. Blood cultures and respiratory viral PCR were negative.
+Over 48 hours, the patient defervesced, oxygenation normalized (96% RA), and inflammatory markers down-trended (WBC 9.2, CRP 21.4, procalcitonin 0.08). On hospital day 3, transitioned to oral azithromycin and monitored for tolerance. CXR on 08/03 showed radiographic improvement.
+The patient maintained adequate oral intake, ambulated independently, and participated in discharge planning. No complications. Discharged on hospital day 4 with improvement of symptoms and stable vitals.
+________________
+
+
+CONDITION AT DISCHARGE:
+* Afebrile >48h
+* Vitals stable
+* Ambulating independently
+* Tolerating regular diet
+* No supplemental oxygen required
+* Alert, oriented, clinically improved
+________________
+
+
+DISCHARGE MEDICATIONS:
+1. Azithromycin 500 mg PO daily x2 days (to complete 5-day course)
+2. Acetaminophen 650 mg PO PRN Q6H for fever or myalgias
+3. Multivitamin PO daily
+No home medications prior to admission. Medication reconciliation completed.
+________________
+DISCHARGE INSTRUCTIONS:
+* Continue prescribed antibiotics to full course.
+* Monitor for worsening symptoms: fever >38°C, chest pain, worsening dyspnea, or confusion.
+* Resume normal activity as tolerated.
+* Maintain hydration and nutrition.
+* Patient and daughter were educated and provided written discharge instructions.
+________________
+
+
+FOLLOW-UP APPOINTMENTS:
+* Primary Care: Dr. Laura Greene (Stanford Primary Care)
+   * Date/Time: 08/09/2025 @ 10:30 AM
+   * Purpose: Post-hospital follow-up, medication review, recovery check
+* Imaging:
+   * Outpatient chest X-ray in 6 weeks (order placed)
+________________
+
+
+IMMUNIZATIONS:
+* COVID-19 and influenza vaccines up to date
+* Recommend evaluation of pneumococcal vaccination status at PCP visit
+________________
+
+
+ADVANCE CARE PLANNING:
+* Code status: Full Code
+* No advance directive on file
+* Discussed with patient and daughter; wishes full treatment
+________________
+
+
+PROVIDER CONTACT INFORMATION:
+ Emily Tran, MD
+Internal Medicine – Stanford Hospital
+Pager: xxx-xxx-xxxx
+________________
+
+
+Dictated/Signed:
+ Emily Tran, MD
+ 08/04/2025 @ 08:45 AM
