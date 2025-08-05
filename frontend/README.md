@@ -1,10 +1,10 @@
-# CareExit - Hospital Discharge Management System
+# Bela - Hospital Discharge Management System
 
 A production-ready React + TypeScript application for physicians and discharge nurses to streamline the bedside discharge process.
 
 ## 🏥 Overview
 
-CareExit is a comprehensive discharge management system that provides:
+Bela is a comprehensive discharge management system that provides:
 
 - **AI-Powered Discharge Summaries** - Generate and edit summaries with side-by-side diff review
 - **Patient-Friendly Instructions** - Create instructions tailored to literacy level and language
@@ -23,7 +23,7 @@ CareExit is a comprehensive discharge management system that provides:
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd careexit
+cd bela
 
 # Install dependencies
 npm install
@@ -194,8 +194,8 @@ VITE_API_BASE_URL=http://localhost:8080
 
 For technical support or questions:
 - Create an issue in the repository
-- Contact: healthcare-dev@careexit.com
-- Documentation: https://docs.careexit.com
+- Contact: healthcare-dev@bela.com
+- Documentation: https://docs.bela.com
 
 ## 📄 License
 
@@ -203,4 +203,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**CareExit** - Streamlining hospital discharge for better patient outcomes.
+**Bela** - Streamlining hospital discharge for better patient outcomes.

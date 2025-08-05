@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useRecoilValue } from 'recoil';
-import { currentPatientState } from '@/store/atoms';
+import { useRecoilValue, useSetRecoilState } from 'recoil';
+import { medicationsSelector, currentPatientState, dashboardState } from '@/store/atoms';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
@@ -181,7 +181,9 @@ function SortableMedication({ medication, onToggleReconciled }: {
 }
 
 export default function MedReconcile() {
+  const medications = useRecoilValue(medicationsSelector);
   const patient = useRecoilValue(currentPatientState);
+  const setDashboardState = useSetRecoilState(dashboardState);
   const [homeMeds, setHomeMeds] = useState<Medication[]>([]);
   const [hospitalMeds, setHospitalMeds] = useState<Medication[]>([]);
   const [dischargeMeds, setDischargeMeds] = useState<Medication[]>([]);
@@ -194,11 +196,11 @@ export default function MedReconcile() {
   );
 
   useEffect(() => {
-    // Load medications by category
-    setHomeMeds(mockMedications.filter(med => med.category === 'home'));
-    setHospitalMeds(mockMedications.filter(med => med.category === 'hospital'));
-    setDischargeMeds(mockMedications.filter(med => med.category === 'discharge'));
-  }, []);
+    const meds = medications.length > 0 ? medications : mockMedications;
+    setHomeMeds(meds.filter(med => med.category === 'home'));
+    setHospitalMeds(meds.filter(med => med.category === 'hospital'));
+    setDischargeMeds(meds.filter(med => med.category === 'discharge'));
+  }, [medications]);
 
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
@@ -234,7 +236,9 @@ export default function MedReconcile() {
   const totalCount = allMedications.length;
   const conflictCount = allMedications.filter(med => med.conflicts?.length).length;
 
-  const generateReconciledList = () => {
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
+
+  const generateReconciledList = async () => {
     const reconciledMeds = allMedications.filter(med => med.isReconciled && med.status === 'active');
     
     if (reconciledMeds.length === 0) {
@@ -242,23 +246,39 @@ export default function MedReconcile() {
       return;
     }
 
-    // Generate JSON for API
-    const medList = {
-      patientId: patient.id,
-      reconciledDate: new Date().toISOString(),
-      medications: reconciledMeds.map(med => ({
-        name: med.name,
-        dosage: med.dosage,
-        frequency: med.frequency,
-        route: med.route,
-        indication: med.indication
-      })),
-      pharmacist: 'Not reviewed',
-      physician: 'Dr. Sarah Smith'
-    };
+    try {
+      console.log('Sending medication analysis request:', { medications: reconciledMeds, patient_id: patient.id });
+      
+      const response = await fetch('http://localhost:8000/api/medrec/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          medications: reconciledMeds,
+          patient_id: patient.id,
+        }),
+      });
 
-    console.log('Reconciled medication list:', medList);
-    toast.success('Reconciled medication list generated');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Received analysis result:', data);
+      setAnalysisResult(data.analysis);
+      
+      // Update dashboard status to show analysis is complete
+      setDashboardState(prev => ({
+        ...prev,
+        'medication-reconciliation': 'generated'
+      }));
+      
+      toast.success('Medication list analyzed successfully with AI');
+    } catch (error) {
+      console.error('Medication analysis error:', error);
+      toast.error('Failed to analyze medication list: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
   return (
@@ -303,12 +323,21 @@ export default function MedReconcile() {
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="w-full bg-muted rounded-full h-2">
-          <div 
-            className="bg-clinical-success h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(reconciledCount / totalCount) * 100}%` }}
-          />
+        {/* Status Summary */}
+        <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+          <div className="flex items-center space-x-4">
+            <Badge variant="outline" className="status-info">
+              {reconciledCount}/{totalCount} Reconciled
+            </Badge>
+            {conflictCount > 0 && (
+              <Badge variant="outline" className="status-warning">
+                {conflictCount} Conflicts
+              </Badge>
+            )}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {reconciledCount === totalCount ? 'All medications reconciled' : 'Reconciliation in progress'}
+          </div>
         </div>
 
         {/* Medication Columns */}
@@ -399,26 +428,40 @@ export default function MedReconcile() {
         </div>
 
         {/* Reconciliation Summary */}
-        {reconciledCount > 0 && (
+        {analysisResult && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-clinical-success">Reconciliation Summary</CardTitle>
+              <CardTitle className="text-clinical-info">AI Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-clinical-success">{reconciledCount}</p>
-                  <p className="text-sm text-muted-foreground">Medications Reconciled</p>
+              <div className="space-y-2">
+                <div>
+                  <h4 className="font-semibold">Interactions:</h4>
+                  <ul className="list-disc pl-5">
+                    {analysisResult.interactions.map((interaction, index) => (
+                      <li key={index}>{interaction}</li>
+                    ))}
+                  </ul>
                 </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-clinical-warning">{conflictCount}</p>
-                  <p className="text-sm text-muted-foreground">Conflicts Identified</p>
+                <div>
+                  <h4 className="font-semibold">Duplicates:</h4>
+                  <ul className="list-disc pl-5">
+                    {analysisResult.duplicates.map((duplicate, index) => (
+                      <li key={index}>{duplicate}</li>
+                    ))}
+                  </ul>
                 </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-primary">
-                    {Math.round((reconciledCount / totalCount) * 100)}%
-                  </p>
-                  <p className="text-sm text-muted-foreground">Complete</p>
+                <div>
+                  <h4 className="font-semibold">Clinical Concerns:</h4>
+                  <ul className="list-disc pl-5">
+                    {analysisResult.clinical_concerns.map((concern, index) => (
+                      <li key={index}>{concern}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-semibold">Summary:</h4>
+                  <p>{analysisResult.summary}</p>
                 </div>
               </div>
             </CardContent>

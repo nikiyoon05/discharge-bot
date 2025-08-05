@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Plus, Users, Clock, AlertCircle } from 'lucide-react';
+import { Search, Filter, Plus, Users, Clock, AlertCircle, Database } from 'lucide-react';
 import BackButton from '@/components/common/BackButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -133,10 +133,20 @@ export default function PatientList() {
                 Select a patient to manage their discharge workflow
               </p>
             </div>
-            <Button className="clinical-button-primary">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Patient
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/system/epic-integration')}
+                className="clinical-button-secondary"
+              >
+                <Database className="h-4 w-4 mr-2" />
+                Epic Integration
+              </Button>
+              <Button className="clinical-button-primary">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Patient
+              </Button>
+            </div>
           </div>
         </div>
       </div>

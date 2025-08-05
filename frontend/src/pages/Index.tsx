@@ -47,7 +47,7 @@ const Index = () => {
               <span className="text-primary-foreground font-bold text-lg">CE</span>
             </div>
             <div>
-              <h1 className="clinical-h2 text-primary">CareExit</h1>
+              <h1 className="clinical-h2 text-primary">Bela</h1>
               <p className="text-xs text-muted-foreground">Discharge Management System</p>
             </div>
           </div>
@@ -74,7 +74,7 @@ const Index = () => {
             Streamline Hospital Discharge
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-            CareExit is a comprehensive discharge management system designed for physicians and nurses. 
+            Bela is a comprehensive discharge management system designed for physicians and nurses. 
             Reduce discharge time, improve patient safety, and enhance care coordination.
           </p>
           <div className="flex items-center justify-center space-x-4">
@@ -128,7 +128,7 @@ const Index = () => {
       <footer className="border-t bg-muted/30 py-8">
         <div className="container mx-auto px-4 text-center">
           <p className="clinical-small text-muted-foreground">
-            CareExit Discharge Management System • Built for Healthcare Professionals
+            Bela Discharge Management System • Built for Healthcare Professionals
           </p>
           <p className="text-xs text-muted-foreground mt-2">
             Demo Version • Not for Production Use

@@ -1,4 +1,4 @@
-import { atom } from 'recoil';
+import { atom, selector } from 'recoil';
 
 // Auth state
 export const authUserState = atom({
@@ -63,4 +63,31 @@ export const auditLogState = atom({
     patientId?: string;
     dataHash: string;
   }>,
+});
+
+export const ehrDataState = atom({
+  key: 'ehrDataState',
+  default: null,
+});
+
+export const medicationsSelector = selector({
+  key: 'medicationsSelector',
+  get: ({ get }) => {
+    const ehrData = get(ehrDataState);
+    if (!ehrData) {
+      return [];
+    }
+    return ehrData.currentMedications;
+  },
+});
+
+export const dashboardState = atom({
+  key: 'dashboardState',
+  default: {
+    'pre-discharge-meeting': 'not-completed',
+    'patient-ehr-chart': 'not-connected',
+    'out-of-network-scheduling': 'to-do',
+    'medication-reconciliation': 'not-generated',
+    'patient-instructions': 'not-generated',
+  },
 });

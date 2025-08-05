@@ -34,7 +34,7 @@ export default function TopNav() {
               <span className="text-primary-foreground font-bold text-sm">CE</span>
             </div>
             <div>
-              <h1 className="clinical-h2 text-primary">CareExit</h1>
+              <h1 className="clinical-h2 text-primary">Bela</h1>
               <p className="text-xs text-muted-foreground">Discharge Management System</p>
             </div>
           </div>

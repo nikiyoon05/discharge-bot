@@ -18,8 +18,14 @@ import PatientList from "./pages/PatientList";
 import Dashboard from "./pages/Dashboard";
 import PatientSummary from "./pages/PatientSummary";
 import PatientInstructions from "./pages/PatientInstructions";
-import PatientMedRec from "./pages/PatientMedRec";
+
 import PatientSchedule from "./pages/PatientSchedule";
+import DischargeMeetingPage from "./pages/DischargeMeetingPage";
+import EHRStatusPage from "./pages/EHRStatusPage";
+import OutOfNetworkSchedulingPage from "./pages/OutOfNetworkSchedulingPage";
+import SystemEpicIntegrationPage from "./pages/SystemEpicIntegrationPage";
+import PostDischargeChatPage from "./pages/PostDischargeChatPage";
+import PatientChatSimulationPage from "./pages/PatientChatSimulationPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -95,22 +101,26 @@ const App = () => (
               } 
             />
             <Route 
-              path="/patient/:id/med-rec" 
+              path="/patient/:patientId/post-discharge-chat"
               element={
                 <AuthRoute>
                   <AppLayout>
-                    <PatientMedRec />
+                    <PostDischargeChatPage />
                   </AppLayout>
                 </AuthRoute>
-              } 
+              }
             />
             <Route 
-              path="/patient/:id/schedule" 
+              path="/patient/:patientId/chat-simulation"
+              element={
+                <PatientChatSimulationPage />
+              }
+            />
+            <Route 
+              path="/system/epic-integration" 
               element={
                 <AuthRoute>
-                  <AppLayout>
-                    <PatientSchedule />
-                  </AppLayout>
+                  <SystemEpicIntegrationPage />
                 </AuthRoute>
               } 
             />

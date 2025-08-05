@@ -154,7 +154,7 @@ export default function Scheduler() {
   const handleVoiceBotCall = async () => {
     try {
       const script = `
-        Hello ${patient.name}, this is CareExit calling about your discharge appointment scheduling.
+        Hello ${patient.name}, this is Bela calling about your discharge appointment scheduling.
         
         We have several appointment options available for your follow-up care:
         - Tomorrow at 2 PM with Dr. Martinez

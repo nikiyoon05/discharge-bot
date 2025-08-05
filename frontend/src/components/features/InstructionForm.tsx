@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useRecoilValue } from 'recoil';
-import { currentPatientState } from '@/store/atoms';
-import { translateService } from '@/services/translate';
-import { Globe, Download, Send, FileText, CheckCircle } from 'lucide-react';
+import { useRecoilValue, useSetRecoilState } from 'recoil';
+import { ehrDataState, dashboardState } from '@/store/atoms';
+
+import { Globe, Download, Send, FileText, CheckCircle, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -18,37 +18,50 @@ interface Language {
 }
 
 export default function InstructionForm() {
-  const patient = useRecoilValue(currentPatientState);
+  const ehrData = useRecoilValue(ehrDataState);
+  const setDashboardState = useSetRecoilState(dashboardState);
   const [literacyLevel, setLiteracyLevel] = useState<'elementary' | 'middle' | 'high-school' | 'college'>('high-school');
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [availableLanguages, setAvailableLanguages] = useState<Language[]>([]);
   const [originalInstructions, setOriginalInstructions] = useState('');
   const [translatedInstructions, setTranslatedInstructions] = useState('');
   const [isTranslating, setIsTranslating] = useState(false);
-  const [readabilityScore, setReadabilityScore] = useState<any>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  
 
   useEffect(() => {
     loadLanguages();
-    loadDefaultInstructions();
-  }, []);
+    if (ehrData) {
+      const generateInitialInstructions = async () => {
+        // First try to get discharge summary from uploaded files
+        let dischargeSummary = '';
+        try {
+          const response = await fetch(`http://localhost:8000/api/emr/patient/patient-001/discharge-summary`);
+          if (response.ok) {
+            const result = await response.json();
+            dischargeSummary = result.discharge_summary || '';
+          }
+        } catch (error) {
+          console.log('No discharge summary found');
+        }
 
-  const loadLanguages = async () => {
-    try {
-      const languages = await translateService.getAvailableLanguages();
-      setAvailableLanguages(languages);
-    } catch (error) {
-      toast.error('Failed to load available languages');
-    }
-  };
+        const { demographics, conditions, medications } = ehrData;
+        
+        // Use discharge summary content if available, otherwise generate from structured data
+        let instructions = '';
+        if (dischargeSummary && dischargeSummary.trim()) {
+          // Use the EXACT discharge summary text from the doctor
+          instructions = dischargeSummary;
+        } else {
+          // Fallback to structured data if no discharge summary
+          const primaryCondition = conditions && conditions.length > 0 ? conditions[0].display : 'your medical condition';
+          instructions = `DISCHARGE INSTRUCTIONS FOR ${demographics.name}
 
-  const loadDefaultInstructions = () => {
-    // Generate default discharge instructions based on patient
-    const defaultInstructions = `DISCHARGE INSTRUCTIONS FOR ${patient.name}
+PRIMARY DIAGNOSIS:
+• ${primaryCondition}
 
 MEDICATIONS:
-• Take azithromycin 500mg once daily for 3 more days
-• Resume your regular medications: Lisinopril and Metformin as prescribed
-• Do not stop taking medications without talking to your doctor
+${medications.map(med => `• ${med.name} ${med.dosage} ${med.frequency}`).join('\n')}
 
 ACTIVITY:
 • You may return to normal activities as tolerated
@@ -61,29 +74,44 @@ DIET:
 • Eat nutritious foods to help your body heal
 
 FOLLOW-UP CARE:
-• Schedule an appointment with Dr. Martinez within 1 week
-• Call if you cannot get an appointment within this timeframe
+• Schedule an appointment with your primary care provider within 1 week
 
 WHEN TO CALL YOUR DOCTOR:
 • Fever above 101°F (38.3°C)
 • Difficulty breathing or shortness of breath
 • Chest pain
-• Cough that gets worse or produces blood
 • Any concerns about your medications
 
 EMERGENCY SITUATIONS:
 • Severe difficulty breathing
 • Chest pain
 • High fever with chills
-• Go to the emergency room or call 911
+• Go to the emergency room or call 911`;
+        }
+        setOriginalInstructions(instructions);
+        
+        // Update dashboard status to show instructions are ready
+        if (instructions) {
+          setDashboardState(prev => ({
+            ...prev,
+            'patient-instructions': 'generated'
+          }));
+        }
+      };
+      generateInitialInstructions();
+    }
+  }, [ehrData, setDashboardState]);
 
-Contact Information:
-• Primary Care Office: (555) 123-4567
-• After-hours nurse line: (555) 123-4568
-• Emergency: 911`;
-
-    setOriginalInstructions(defaultInstructions);
+  const loadLanguages = async () => {
+    try {
+      const languages = await fetch('http://localhost:8000/api/instructions/languages');
+      setAvailableLanguages(await languages.json());
+    } catch (error) {
+      toast.error('Failed to load available languages');
+    }
   };
+
+  
 
   const handleTranslate = async () => {
     if (!originalInstructions.trim()) {
@@ -93,18 +121,23 @@ Contact Information:
 
     setIsTranslating(true);
     try {
-      const result = await translateService.translateInstructions({
-        text: originalInstructions,
-        literacyLevel,
-        language: selectedLanguage as any,
-        medicalContext: 'discharge'
+      const result = await fetch('http://localhost:8000/api/instructions/generate-instructions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          emr_data: ehrData,
+          literacy_level: literacyLevel,
+          language: selectedLanguage,
+        }),
       });
 
-      setTranslatedInstructions(result.translatedText);
+      const data = await result.json();
+      setTranslatedInstructions(data.instructions);
       
       // Get readability score
-      const readability = await translateService.validateReadability(result.translatedText);
-      setReadabilityScore(readability);
+      
 
       toast.success('Instructions translated successfully');
     } catch (error) {
@@ -120,7 +153,7 @@ Contact Information:
       printWindow.document.write(`
         <html>
           <head>
-            <title>Discharge Instructions - ${patient.name}</title>
+            <title>Discharge Instructions - {ehrData?.demographics.name}</title>
             <style>
               body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
               h1 { color: #004c97; border-bottom: 2px solid #004c97; padding-bottom: 10px; }
@@ -131,8 +164,8 @@ Contact Information:
           <body>
             <h1>Discharge Instructions</h1>
             <div class="patient-info">
-              <strong>Patient:</strong> ${patient.name}<br>
-              <strong>MRN:</strong> ${patient.mrn}<br>
+              <strong>Patient:</strong> ${ehrData?.demographics.name}<br>
+              <strong>MRN:</strong> ${ehrData?.demographics.mrn}<br>
               <strong>Date:</strong> ${new Date().toLocaleDateString()}
             </div>
             <pre>${translatedInstructions || originalInstructions}</pre>
@@ -161,7 +194,9 @@ Contact Information:
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className={`grid gap-6 transition-all duration-300 ${
+        isExpanded ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-3'
+      }`}>
         {/* Configuration Panel */}
         <Card>
           <CardHeader>
@@ -210,36 +245,47 @@ Contact Information:
               {isTranslating ? 'Translating...' : 'Generate Instructions'}
             </Button>
 
-            {/* Readability Score */}
-            {readabilityScore && (
-              <div className="p-3 bg-clinical-success/10 rounded-lg border border-clinical-success/20">
-                <div className="flex items-center space-x-2 mb-2">
-                  <CheckCircle className="h-4 w-4 text-clinical-success" />
-                  <span className="clinical-small font-medium text-clinical-success">
-                    Readability: {readabilityScore.grade}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Score: {readabilityScore.score}/10
-                </p>
-              </div>
-            )}
+            
           </CardContent>
         </Card>
 
         {/* Original Instructions */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Badge variant="outline">Original</Badge>
-              <span>Clinical Instructions</span>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Badge variant="outline">Original</Badge>
+                <span>Clinical Instructions</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="flex items-center space-x-1"
+              >
+                {isExpanded ? (
+                  <>
+                    <Minimize2 className="h-4 w-4" />
+                    <span className="text-sm">Collapse</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="h-4 w-4" />
+                    <span className="text-sm">Expand</span>
+                  </>
+                )}
+              </Button>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea
               value={originalInstructions}
               onChange={(e) => setOriginalInstructions(e.target.value)}
-              className="min-h-96 font-mono text-sm"
+              className={`font-mono text-sm resize-none transition-all duration-300 ${
+                isExpanded 
+                  ? 'min-h-96 max-h-screen overflow-y-auto' 
+                  : 'min-h-96 max-h-96 overflow-y-auto'
+              }`}
               placeholder="Enter discharge instructions..."
             />
           </CardContent>
@@ -248,17 +294,44 @@ Contact Information:
         {/* Translated Instructions */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Badge variant="secondary">Patient-Friendly</Badge>
-              <span>Generated Instructions</span>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Badge variant="secondary">Patient-Friendly</Badge>
+                <span>Generated Instructions</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="flex items-center space-x-1"
+              >
+                {isExpanded ? (
+                  <>
+                    <Minimize2 className="h-4 w-4" />
+                    <span className="text-sm">Collapse</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="h-4 w-4" />
+                    <span className="text-sm">Expand</span>
+                  </>
+                )}
+              </Button>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {translatedInstructions ? (
               <>
-                <div className="min-h-80 p-4 bg-muted/30 rounded-lg">
-                  <pre className="whitespace-pre-wrap clinical-small">{translatedInstructions}</pre>
-                </div>
+                <Textarea
+                  value={translatedInstructions}
+                  onChange={(e) => setTranslatedInstructions(e.target.value)}
+                  className={`font-mono text-sm resize-none transition-all duration-300 ${
+                    isExpanded 
+                      ? 'min-h-96 max-h-screen overflow-y-auto' 
+                      : 'min-h-80 max-h-96 overflow-y-auto'
+                  }`}
+                  placeholder="Generated instructions will appear here..."
+                />
                 
                 {/* Action Buttons */}
                 <div className="flex space-x-2">
@@ -281,7 +354,9 @@ Contact Information:
                 </div>
               </>
             ) : (
-              <div className="min-h-80 flex items-center justify-center border-2 border-dashed border-muted rounded-lg">
+              <div className={`flex items-center justify-center border-2 border-dashed border-muted rounded-lg transition-all duration-300 ${
+                isExpanded ? 'min-h-96' : 'min-h-80'
+              }`}>
                 <div className="text-center text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p className="clinical-small">Generated instructions will appear here</p>

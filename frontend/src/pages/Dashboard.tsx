@@ -1,26 +1,54 @@
 import { useRecoilValue } from 'recoil';
-import { currentPatientState, notificationState } from '@/store/atoms';
-import { FileText, Globe, Pill, Calendar, MessageSquare, TrendingUp } from 'lucide-react';
+import { currentPatientState, notificationState, dashboardState } from '@/store/atoms';
+import { FileText, Globe, Pill, Calendar, MessageSquare, TrendingUp, Users, Database, Phone } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { useNavigate } from 'react-router-dom';
 import BackButton from '@/components/common/BackButton';
 
 export default function Dashboard() {
   const patient = useRecoilValue(currentPatientState);
   const notifications = useRecoilValue(notificationState);
+  const dashboard = useRecoilValue(dashboardState);
   const navigate = useNavigate();
 
   const quickActions = [
     {
+      title: 'Patient EHR Chart',
+      description: 'View patient\'s Epic EMR data and discharge readiness',
+      icon: Database,
+      path: `/patient/${patient?.id}/ehr-status`,
+      color: 'bg-cyan-500',
+      status: dashboard['patient-ehr-chart'],
+      category: 'clinical'
+    },
+    {
       title: 'Discharge Summary',
-      description: 'Review and edit AI-generated discharge summary',
+      description: 'AI-generated summary from Epic EMR data',
       icon: FileText,
       path: `/patient/${patient?.id}/summary`,
       color: 'bg-blue-500',
-      progress: 75
+      status: 'not-generated',
+      category: 'documentation'
+    },
+    {
+      title: 'Pre-Discharge Meeting',
+      description: 'AI-powered conversation to gather patient preferences',
+      icon: Users,
+      path: `/patient/${patient?.id}/discharge-meeting`,
+      color: 'bg-indigo-500',
+      status: dashboard['pre-discharge-meeting'],
+      category: 'pre-discharge'
+    },
+    {
+      title: 'Out-of-Network Scheduling',
+      description: 'AI bot calls external providers for appointments',
+      icon: Phone,
+      path: `/patient/${patient?.id}/out-of-network-scheduling`,
+      color: 'bg-emerald-500',
+      status: dashboard['out-of-network-scheduling'],
+      category: 'follow-up'
     },
     {
       title: 'Patient Instructions',
@@ -28,40 +56,39 @@ export default function Dashboard() {
       icon: Globe,
       path: `/patient/${patient?.id}/instructions`,
       color: 'bg-green-500',
-      progress: 0
+      status: dashboard['patient-instructions'],
+      category: 'education'
     },
     {
-      title: 'Medication Reconciliation',
-      description: 'Reconcile medications across care transitions',
-      icon: Pill,
-      path: `/patient/${patient?.id}/med-rec`,
-      color: 'bg-orange-500',
-      progress: 40
-    },
-    {
-      title: 'Schedule Appointment',
-      description: 'Book follow-up appointments',
-      icon: Calendar,
-      path: `/patient/${patient?.id}/schedule`,
-      color: 'bg-purple-500',
-      progress: 0
+      title: 'Post-Discharge Chat',
+      description: 'Communicate with patient post-discharge via AI-powered chat',
+      icon: MessageSquare,
+      path: `/patient/${patient?.id}/post-discharge-chat`,
+      color: 'bg-teal-500',
+      status: dashboard['post-discharge-chat'] || 'not-started',
+      category: 'follow-up'
     }
   ];
 
   const recentActivity = [
     {
-      action: 'Discharge summary draft generated',
-      time: '10 minutes ago',
+      action: 'Pre-discharge meeting completed - patient availability captured',
+      time: '15 minutes ago',
       status: 'completed'
     },
     {
-      action: 'Medication reconciliation started',
-      time: '25 minutes ago',
-      status: 'in-progress'
+      action: 'Patient EHR chart synchronized - 47 clinical records loaded',
+      time: '20 minutes ago',
+      status: 'completed'
     },
     {
-      action: 'Patient admitted to unit',
-      time: '3 days ago',
+      action: 'AI bot attempted to call Northwest Primary Care - busy',
+      time: '45 minutes ago',
+      status: 'failed'
+    },
+    {
+      action: 'Discharge summary draft generated from Epic data',
+      time: '1 hour ago',
       status: 'completed'
     }
   ];
@@ -111,12 +138,14 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Discharge Progress</CardTitle>
+            <CardTitle className="text-sm font-medium">Workflow Status</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">65%</div>
-            <Progress value={65} className="mt-2" />
+            <div className="text-2xl font-bold">Active</div>
+            <p className="text-xs text-muted-foreground">
+              Discharge planning in progress
+            </p>
           </CardContent>
         </Card>
 
@@ -136,33 +165,42 @@ export default function Dashboard() {
 
       {/* Quick Actions */}
       <div>
-        <h2 className="clinical-h2 mb-4">Discharge Workflow</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <h2 className="clinical-h2 mb-4">AI-Powered Discharge Workflow</h2>
+        <p className="text-muted-foreground mb-6">
+          Streamlined discharge planning with Epic EMR integration and AI automation
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {quickActions.map((action) => (
-            <Card key={action.title} className="clinical-card-hover cursor-pointer">
-              <CardHeader className="flex flex-row items-center space-y-0 pb-2">
-                <div className={`p-2 rounded-lg ${action.color} mr-4`}>
+            <Card key={action.title} className="clinical-card-hover cursor-pointer flex flex-col justify-between h-full">
+              <CardHeader className="flex flex-row items-start space-y-0 pb-2">
+                <div className={`p-2 rounded-lg ${action.color} mr-4 flex-shrink-0`}>
                   <action.icon className="h-6 w-6 text-white" />
                 </div>
-                <div className="flex-1">
-                  <CardTitle className="clinical-small">{action.title}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{action.description}</p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between mb-2">
+                    <CardTitle className="clinical-small text-left">{action.title}</CardTitle>
+                    <Badge 
+                      variant={action.status === 'connected' || action.status === 'generated' || action.status === 'scheduled' || action.status === 'completed' ? 'default' : 'secondary'} 
+                      className={`ml-2 flex-shrink-0 ${
+                        action.status === 'connected' || action.status === 'generated' || action.status === 'scheduled' || action.status === 'completed' 
+                          ? 'bg-green-500 hover:bg-green-600 text-white' 
+                          : ''
+                      }`}
+                    >
+                      {action.status.replace(/-/g, ' ')}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground text-left">{action.description}</p>
                 </div>
-                {action.progress > 0 && (
-                  <Badge variant="secondary">{action.progress}% complete</Badge>
-                )}
               </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <Progress value={action.progress} className="flex-1 mr-4" />
-                  <Button
-                    onClick={() => navigate(action.path)}
-                    size="sm"
-                    className="clinical-button-primary"
-                  >
-                    {action.progress > 0 ? 'Continue' : 'Start'}
-                  </Button>
-                </div>
+              <CardContent className="pt-0">
+                <Button
+                  onClick={() => navigate(action.path)}
+                  size="sm"
+                  className="clinical-button-primary w-full"
+                >
+                  {action.status === 'completed' || action.status === 'connected' || action.status === 'scheduled' || action.status === 'generated' ? 'View' : 'Start'}
+                </Button>
               </CardContent>
             </Card>
           ))}
