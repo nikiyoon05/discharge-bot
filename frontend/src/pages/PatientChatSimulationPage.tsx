@@ -13,24 +13,26 @@ interface Message {
 }
 
 export default function PatientChatSimulationPage() {
-  const { patientId } = useParams<{ patientId: string }>();
+  const { id } = useParams<{ id: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const ws = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    ws.current = new WebSocket(`ws://localhost:8000/api/chat/ws/${patientId}/patient`);
+    if (id) {
+      ws.current = new WebSocket(`ws://localhost:8000/api/chat/ws/${id}/patient`);
 
-    ws.current.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      setMessages((prevMessages) => [...prevMessages, message]);
-    };
+      ws.current.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        setMessages((prevMessages) => [...prevMessages, message]);
+      };
+    }
 
     return () => {
       ws.current?.close();
     };
-  }, [patientId]);
+  }, [id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -47,6 +49,10 @@ export default function PatientChatSimulationPage() {
       setInputMessage('');
     }
   };
+
+  if (!id) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">

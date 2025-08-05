@@ -101,7 +101,7 @@ const App = () => (
               } 
             />
             <Route 
-              path="/patient/:patientId/post-discharge-chat"
+              path="/patient/:id/post-discharge-chat"
               element={
                 <AuthRoute>
                   <AppLayout>
@@ -111,7 +111,7 @@ const App = () => (
               }
             />
             <Route 
-              path="/patient/:patientId/chat-simulation"
+              path="/patient/:id/chat-simulation"
               element={
                 <PatientChatSimulationPage />
               }
