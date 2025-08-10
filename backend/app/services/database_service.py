@@ -233,3 +233,39 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_patient_summary(patient_id: str) -> str:
+    """
+    Generates a brief, human-readable summary of a patient's EMR data
+    for use in AI prompts.
+    """
+    db_service = DatabaseService()
+    patient_data = db_service.get_patient_data(patient_id)
+
+    if not patient_data or not patient_data.get("emr_data"):
+        return "No EMR data found for this patient."
+
+    emr = patient_data["emr_data"]
+    demographics = emr.get("patient_demographics", {})
+    summary_points = [
+        f"Patient: {demographics.get('name', 'N/A')}, MRN: {demographics.get('mrn', 'N/A')}",
+    ]
+
+    # Add conditions
+    conditions = emr.get("conditions", [])
+    if conditions:
+        condition_names = [c.get('description', 'N/A') for c in conditions[:3]]
+        summary_points.append(f"Primary Conditions: {', '.join(condition_names)}")
+
+    # Add medications
+    meds = emr.get("medications", [])
+    if meds:
+        med_names = [m.get('medication_name', 'N/A') for m in meds[:3]]
+        summary_points.append(f"Key Medications: {', '.join(med_names)}")
+
+    # Add key note
+    notes = emr.get("clinical_notes", [])
+    if notes:
+        summary_points.append(f"Recent Note: {notes[0].get('content', 'N/A')[:100]}...")
+
+    return "\n".join(summary_points)
