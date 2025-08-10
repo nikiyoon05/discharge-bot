@@ -73,6 +73,10 @@ class DatabaseService:
             patient.status = "connected"
             patient.updated_at = datetime.utcnow()
             
+            # Store admission date from EMR data if available and not already set
+            if not patient.admission_date and emr_data.patient_demographics.admission_date:
+                patient.admission_date = emr_data.patient_demographics.admission_date
+            
             # Save uploaded files to disk and store paths
             if uploaded_files:
                 if uploaded_files.get("ehr_file"):
@@ -135,6 +139,7 @@ class DatabaseService:
                 "emr_data": patient.emr_data,
                 "uploaded_files": uploaded_files,
                 "status": patient.status,
+                "admission_date": patient.admission_date,
                 "last_updated": patient.updated_at.isoformat() if patient.updated_at else None
             }
             
@@ -219,6 +224,29 @@ class DatabaseService:
         except Exception as e:
             db.rollback()
             print(f"Error saving patient instructions: {e}")
+            return False
+        finally:
+            db.close()
+    
+    def update_patient(self, patient_id: str, update_data: dict) -> bool:
+        """Update patient information"""
+        db = self.get_db()
+        try:
+            patient = db.query(Patient).filter(Patient.id == patient_id).first()
+            if not patient:
+                return False
+            
+            # Update allowed fields
+            if 'admission_date' in update_data:
+                patient.admission_date = update_data['admission_date']
+            
+            patient.updated_at = datetime.utcnow()
+            db.commit()
+            return True
+            
+        except Exception as e:
+            db.rollback()
+            print(f"Error updating patient: {e}")
             return False
         finally:
             db.close()

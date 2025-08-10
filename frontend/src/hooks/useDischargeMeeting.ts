@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
+import { useSetRecoilState } from 'recoil';
+import { dashboardState } from '@/store/atoms';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ConversationMessage {
@@ -51,6 +53,8 @@ export const useDischargeMeeting = () => {
   const waitingForAnswerRef = useRef<boolean>(waitingForAnswer);
   const isSpeakingRef = useRef<boolean>(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const patientIdRef = useRef<string | null>(null);
+  const setDashboard = useSetRecoilState(dashboardState);
 
   // Keep refs in sync
   useEffect(() => {
@@ -94,7 +98,9 @@ export const useDischargeMeeting = () => {
   };
   
   const startMeeting = async (patientId: string) => {
+    patientIdRef.current = patientId;
     setStatus('in-progress');
+    setDashboard(prev => ({ ...prev, 'pre-discharge-meeting': 'in-progress' }));
     
     // Step 1: Add a system message to indicate the start
     addConversationMessage({
@@ -137,6 +143,8 @@ export const useDischargeMeeting = () => {
         const step = planResponse.plan[0];
         const msg = { speaker: 'bot' as const, content: step.content, questionId: step.question_id };
         addConversationMessage(msg);
+        // Relay bot speech text to patient view for live transcript
+        try { if (patientIdRef.current) new BroadcastChannel(`meeting-${patientIdRef.current}`).postMessage({ type: 'bot_message', text: msg.content }); } catch {}
         await playSpeech(msg.content);
         if ((step as any).step_type === 'question' || String(step.content || '').trim().endsWith('?')) {
           setWaitingForAnswer(true);
@@ -144,6 +152,8 @@ export const useDischargeMeeting = () => {
           setCurrentStepIndex(0);
         } else {
           setCurrentStepIndex(0);
+          // Auto-advance if the first step is not a question
+          setTimeout(() => { void playNextStep(); }, 250);
         }
       }
       
@@ -192,7 +202,12 @@ export const useDischargeMeeting = () => {
           });
           if (reactiveResp.ok) {
             const data = await reactiveResp.json();
-            const msg = { speaker: 'bot' as const, content: data.reply, questionId: undefined };
+          // Ensure non-question when follow_up_needed is false
+          let reactiveText: string = String(data.reply || '').trim();
+          if (!Boolean(data.follow_up_needed) && reactiveText.endsWith('?')) {
+            reactiveText = reactiveText.replace(/\?+$/,'').trim() + '.';
+          }
+          const msg = { speaker: 'bot' as const, content: reactiveText, questionId: undefined };
             addConversationMessage(msg);
             await playSpeech(msg.content);
             // If follow-up needed, stay on current question
@@ -224,10 +239,11 @@ export const useDischargeMeeting = () => {
             waitingForAnswerRef.current = true;
           }
           addConversationMessage(msg);
+          try { if (patientIdRef.current) new BroadcastChannel(`meeting-${patientIdRef.current}`).postMessage({ type: 'bot_message', text: msg.content }); } catch {}
           await playSpeech(msg.content);
           if (!requiresAnswer) {
             // auto-advance further after non-question
-            setTimeout(() => { void playNextStep(); }, 200);
+            setTimeout(() => { void playNextStep(); }, 250);
           }
         }, 150);
       })();
@@ -268,10 +284,12 @@ export const useDischargeMeeting = () => {
       const audio = new Audio(url);
       currentAudioRef.current = audio;
       isSpeakingRef.current = true;
+      // Notify patient demo to pause listening
+      try { if (patientIdRef.current) new BroadcastChannel(`meeting-${patientIdRef.current}`).postMessage({ type: 'speaking_start' }); } catch {}
       await new Promise<void>((resolve) => {
-        audio.addEventListener('ended', () => { isSpeakingRef.current = false; resolve(); });
-        audio.addEventListener('error', () => { isSpeakingRef.current = false; resolve(); });
-        audio.play().catch(() => { isSpeakingRef.current = false; resolve(); });
+        audio.addEventListener('ended', () => { setTimeout(() => { isSpeakingRef.current = false; try { if (patientIdRef.current) new BroadcastChannel(`meeting-${patientIdRef.current}`).postMessage({ type: 'speaking_end' }); } catch {}; }, 100); resolve(); });
+        audio.addEventListener('error', () => { setTimeout(() => { isSpeakingRef.current = false; try { if (patientIdRef.current) new BroadcastChannel(`meeting-${patientIdRef.current}`).postMessage({ type: 'speaking_end' }); } catch {}; }, 100); resolve(); });
+        audio.play().catch(() => { setTimeout(() => { isSpeakingRef.current = false; try { if (patientIdRef.current) new BroadcastChannel(`meeting-${patientIdRef.current}`).postMessage({ type: 'speaking_end' }); } catch {}; }, 100); resolve(); });
       });
     } catch {
       isSpeakingRef.current = false;
@@ -307,6 +325,7 @@ export const useDischargeMeeting = () => {
         waitingForAnswerRef.current = true;
       }
       addConversationMessage(msg);
+      try { if (patientIdRef.current) new BroadcastChannel(`meeting-${patientIdRef.current}`).postMessage({ type: 'bot_message', text: msg.content }); } catch {}
       await playBotIfNeeded(msg);
       if (stepRequiresAnswer(step)) {
         return;
@@ -330,7 +349,7 @@ export const useDischargeMeeting = () => {
     const newAnswers = { ...extractedAnswers };
     let hasNewAnswers = false;
     
-    recentBotMessages.forEach(botMsg => {
+    recentBotMessages.forEach(async (botMsg) => {
       if (botMsg.questionId && !newAnswers[botMsg.questionId]) {
         // Simple heuristic: if patient response contains certain keywords, consider it an answer
         if (patientResponse.toLowerCase().includes('yes') || 
@@ -342,6 +361,17 @@ export const useDischargeMeeting = () => {
             patientResponse.length > 20) { // Substantial response
           newAnswers[botMsg.questionId] = patientResponse;
           hasNewAnswers = true;
+          // If follow-up category (availability), upsert canonical key to backend
+          const q = questions.find(q => q.id === botMsg.questionId);
+          if (q && q.category === 'follow-up' && patientIdRef.current) {
+            try {
+              await fetch(`${API_BASE}/meeting/answers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ patient_id: patientIdRef.current, answers: { '__availability__': patientResponse } }),
+              });
+            } catch {}
+          }
         }
       }
     });
@@ -377,6 +407,7 @@ export const useDischargeMeeting = () => {
       const summaryResponse = await response.json();
       setSummary(summaryResponse.summary);
       setExtractedAnswers(summaryResponse.extracted_answers);
+      setDashboard(prev => ({ ...prev, 'pre-discharge-meeting': 'completed' }));
 
       // Add confirmation message
       addConversationMessage({

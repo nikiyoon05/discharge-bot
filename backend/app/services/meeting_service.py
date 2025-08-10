@@ -2,7 +2,7 @@ import os
 from openai import OpenAI
 from typing import List
 from app.schemas.meeting_schemas import MeetingQuestion, ConversationStep
-from app.services.database_service import get_patient_summary # Assuming this function exists
+from app.services.database_service import get_patient_summary, DatabaseService # Assuming this function exists
 from app.core.database import SessionLocal, MeetingRecord
 
 class MeetingPlannerService:
@@ -25,25 +25,42 @@ class MeetingPlannerService:
 
         if not os.getenv("OPENAI_API_KEY"):
             print("No OpenAI key found. Using mock conversation plan.")
-            return self._generate_mock_plan(custom_questions)
+            # Reorder and normalize to ensure follow-up availability first and replace placeholders
+            ordered = self._normalize_questions(patient_summary, self._order_questions(custom_questions))
+            return self._generate_mock_plan(ordered)
 
         try:
+            # Reorder and normalize to ensure follow-up availability first and replace placeholders with real meds/devices
+            ordered_questions = self._normalize_questions_from_emr(patient_id, patient_summary, self._order_questions(custom_questions))
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant designing a brief, empathetic pre-discharge conversation for a hospital patient. The goal is to confirm their understanding and gather key information. Create a JSON array of conversation steps that follow the conversation guide provided."},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": self._build_prompt(patient_summary, ordered_questions, conversation_guide)}
                 ],
                 response_format={"type": "json_object"}
             )
             # Assuming the response is a JSON object with a "plan" key
             plan_data = response.choices[0].message.content
             import json
-            plan = json.loads(plan_data).get("plan", [])
-            return [ConversationStep(**step) for step in plan]
+            plan_raw = json.loads(plan_data).get("plan", [])
+            plan_steps = [ConversationStep(**step) for step in plan_raw]
+            # Post-process to ensure the first question is availability (follow-up)
+            plan_steps = self._reorder_plan_questions(plan_steps, ordered_questions)
+            # Replace placeholders like [Your Name] and [Medication Name] in plan content
+            med_name = self._guess_med_name(patient_id, patient_summary)
+            plan_steps = [
+                ConversationStep(
+                    step_type=s.step_type,
+                    content=self._fix_plan_text(s.content, med_name),
+                    question_id=s.question_id,
+                ) for s in plan_steps
+            ]
+            return plan_steps
         except Exception as e:
             print(f"OpenAI API call failed: {e}")
-            return self._generate_mock_plan(custom_questions)
+            ordered = self._normalize_questions_from_emr(patient_id, patient_summary, self._order_questions(custom_questions))
+            return self._generate_mock_plan(ordered)
 
     def _build_prompt(self, summary: str, questions: List[MeetingQuestion], conversation_guide: str) -> str:
         question_list = "\n".join([f'- ({q.category}) {q.question} (id: {q.id})' for q in questions])
@@ -156,6 +173,63 @@ CONCLUSION (30 seconds):
 """
         return guide
 
+    def _order_questions(self, questions: List[MeetingQuestion]) -> List[MeetingQuestion]:
+        """Ensure follow-up availability is asked first."""
+        if not questions:
+            return []
+        follow_up = [q for q in questions if q.category == 'follow-up']
+        others = [q for q in questions if q.category != 'follow-up']
+        # Put follow-up first, then the rest in original order
+        id_set = set(q.id for q in follow_up)
+        remaining = [q for q in questions if q.id not in id_set]
+        return follow_up + remaining
+
+    def _normalize_questions(self, patient_summary: str, questions: List[MeetingQuestion]) -> List[MeetingQuestion]:
+        """Replace placeholders like [Medication Name] only if we have a confident med name; otherwise leave as-is."""
+        med_name = None
+        # Prefer explicit phrase 'prescription for'
+        summary_lower = (patient_summary or '').lower()
+        if 'prescription for' in summary_lower:
+            try:
+                after = patient_summary[summary_lower.index('prescription for') + len('prescription for'):].strip()
+                candidate = after.split()[0].strip(',.' )
+                if candidate and candidate[0].isupper():
+                    med_name = candidate
+            except Exception:
+                med_name = None
+        normalized: List[MeetingQuestion] = []
+        for q in questions:
+            text = q.question
+            if '[Medication Name]' in text and med_name:
+                text = text.replace('[Medication Name]', med_name)
+            if '[Medical Device' in text:
+                text = text.replace('[Medical Device, e.g., Inhaler]', 'inhaler')
+            normalized.append(MeetingQuestion(id=q.id, question=text, category=q.category))
+        return normalized
+
+    def _normalize_questions_from_emr(self, patient_id: str, patient_summary: str, questions: List[MeetingQuestion]) -> List[MeetingQuestion]:
+        """Prefer real EMR medication/device names where available."""
+        try:
+            dbs = DatabaseService()
+            data = dbs.get_patient_data(patient_id)
+            emr = (data or {}).get('emr_data') or {}
+            meds = emr.get('medications') or []
+            med_name = None
+            if meds:
+                # Prefer first current medication
+                med_name = meds[0].get('medication_name') or meds[0].get('name')
+            # Fallback to summary heuristic
+            normalized = self._normalize_questions(patient_summary, questions)
+            if med_name:
+                out: List[MeetingQuestion] = []
+                for q in normalized:
+                    text = q.question.replace('[Medication Name]', med_name)
+                    out.append(MeetingQuestion(id=q.id, question=text, category=q.category))
+                return out
+            return normalized
+        except Exception:
+            return self._normalize_questions(patient_summary, questions)
+
     def generate_reactive_reply(self, transcript: List[dict], last_patient_message: str, context_step: str | None) -> dict:
         """
         Generate a brief, empathetic acknowledgment and, if appropriate,
@@ -174,8 +248,10 @@ CONCLUSION (30 seconds):
         try:
             prompt = (
                 "You are an empathetic clinician. Given the ongoing pre-discharge conversation transcript and the patient's last reply, "
-                "write a brief (1-2 sentences) acknowledgment and, only if needed, a short clarification or follow-up question. "
-                "Be concise, warm, and helpful. Respond as the clinician. Return JSON with keys: reply (string), follow_up_needed (boolean)."
+                "write a BRIEF response (<= 2 sentences). Stay strictly on-topic and move the conversation forward. "
+                "Only ask ONE short follow-up question if the patient explicitly expresses confusion or asks for clarification. "
+                "If follow_up_needed is false, the reply MUST NOT end with a question mark. "
+                "Respond as the clinician. Return JSON: { reply: string, follow_up_needed: boolean }."
             )
             import json
             response = self.client.chat.completions.create(
@@ -191,7 +267,11 @@ CONCLUSION (30 seconds):
                 response_format={"type": "json_object"}
             )
             data = json.loads(response.choices[0].message.content)
-            return {"reply": data.get("reply", "Thanks for sharing that."), "follow_up_needed": bool(data.get("follow_up_needed", False))}
+            reply = data.get("reply", "Thanks for sharing that.")
+            follow = bool(data.get("follow_up_needed", False))
+            if not follow and reply.strip().endswith("?"):
+                reply = reply.rstrip("?").rstrip() + "."
+            return {"reply": reply, "follow_up_needed": follow}
         except Exception:
             return {"reply": "Thanks for sharing that.", "follow_up_needed": False}
 
@@ -200,10 +280,98 @@ CONCLUSION (30 seconds):
             ConversationStep(step_type='introduction', content="Hello! I'm calling to briefly go over a few things before your discharge to make sure you're all set."),
             ConversationStep(step_type='summary', content="I see you have a new prescription for Lisinopril and a follow-up appointment to schedule."),
         ]
-        for q in questions:
+        # Ensure follow-up first
+        followup = [q for q in questions if q.category == 'follow-up']
+        others = [q for q in questions if q.category != 'follow-up']
+        for q in followup + others:
             plan.append(ConversationStep(step_type='question', content=q.question, question_id=q.id))
         plan.append(ConversationStep(step_type='conclusion', content="That's all my questions. Thank you! We'll be in to see you shortly."))
         return plan
+
+    def _reorder_plan_questions(self, plan: List[ConversationStep], questions: List[MeetingQuestion]) -> List[ConversationStep]:
+        """Ensure the first question asked is any follow-up (availability) question.
+        Keeps non-question steps (introduction/summary/conclusion) order, but reorders the block of question steps
+        so that follow-up questions appear first.
+        """
+        if not plan:
+            return plan
+        followup_ids = {q.id for q in questions if q.category == 'follow-up'}
+        # Split into segments: prefix non-questions, question steps, suffix non-questions
+        prefix = []
+        questions_only = []
+        suffix = []
+        in_questions = False
+        for step in plan:
+            if step.step_type == 'question':
+                in_questions = True
+                questions_only.append(step)
+            else:
+                if not in_questions:
+                    prefix.append(step)
+                else:
+                    suffix.append(step)
+        if not questions_only:
+            return plan
+        followup_steps = [s for s in questions_only if s.question_id in followup_ids]
+        other_steps = [s for s in questions_only if s.question_id not in followup_ids]
+        reordered_questions = followup_steps + other_steps
+        return prefix + reordered_questions + suffix
+
+    def _fix_plan_text(self, text: str, med_name: str | None) -> str:
+        if not text:
+            return text
+        t = text
+        # Replace name placeholder
+        t = t.replace('[Your Name]', 'the Bela automated discharge planner')
+        # Replace medication placeholder
+        if med_name:
+            t = t.replace('[Medication Name]', med_name)
+        return t
+
+    def _guess_med_name(self, patient_id: str, patient_summary: str) -> str | None:
+        try:
+            dbs = DatabaseService()
+            data = dbs.get_patient_data(patient_id)
+            emr = (data or {}).get('emr_data') or {}
+            meds = emr.get('medications') or []
+            if meds:
+                name = meds[0].get('medication_name') or meds[0].get('name')
+                if name:
+                    return name
+        except Exception:
+            pass
+        # No confident med name
+        return None
+
+    def upsert_partial_answers(self, patient_id: str, answers: dict) -> dict:
+        """Merge partial extracted answers for an in-progress meeting.
+        Also mirror a canonical '__availability__' key if a follow-up answer is present.
+        """
+        from sqlalchemy import desc
+        db = SessionLocal()
+        try:
+            record = db.query(MeetingRecord).filter(MeetingRecord.patient_id == patient_id).order_by(desc(MeetingRecord.created_at)).first()
+            if not record:
+                record = MeetingRecord(patient_id=patient_id, status='in-progress', extracted_answers={})
+                db.add(record)
+            # Merge answers
+            merged = dict(record.extracted_answers or {})
+            merged.update(answers or {})
+            # Canonical availability if provided
+            for k, v in (answers or {}).items():
+                if k == '__availability__' or 'availability' in str(k).lower():
+                    merged['__availability__'] = v
+                    # Also update a human-readable notes field that OON scheduling can parse easily
+                    merged['__availability_notes__'] = str(v)
+            record.extracted_answers = merged
+            db.commit()
+            db.refresh(record)
+            return {"status": "ok"}
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
 
     def summarize_meeting(self, transcript: List[dict], questions: List[MeetingQuestion]) -> dict:
         # Guard: if no patient messages, avoid LLM hallucinations
@@ -263,7 +431,7 @@ CONCLUSION (30 seconds):
                     status='completed',
                     transcript=transcript,
                     summary=result.get('summary', ''),
-                    extracted_answers=result.get('extracted_answers', {}),
+                    extracted_answers=self._mark_unanswered(questions, result.get('extracted_answers', {})),
                 )
                 db.add(record)
                 db.commit()
@@ -324,6 +492,7 @@ CONCLUSION (30 seconds):
         Based on the transcript, provide two things in a JSON object:
         1. A brief "summary" (2-3 sentences) of the key points and patient sentiment.
         2. "extracted_answers": a JSON object where each key is a question ID and the value is the patient's answer.
+           IMPORTANT: If a question was not answered by the patient in the transcript, set its value to exactly "Not discussed".
 
         Questions to Answer:
         {question_list}
@@ -354,11 +523,11 @@ CONCLUSION (30 seconds):
             elif q.category == 'follow-up':
                 answers[q.id] = "Available Tuesday or Wednesday afternoons after 2 PM - prefers phone calls, daughter can help with transportation"
             elif q.category == 'medication':
-                answers[q.id] = "Patient confirmed they have all medications and understands timing - will take morning pill with breakfast"
+                answers[q.id] = "Not discussed"
             elif q.category == 'other':
-                answers[q.id] = "Patient rated confidence as 8/10, feels well-prepared to go home"
+                answers[q.id] = "Not discussed"
             else:
-                answers[q.id] = "Patient confirmed understanding and agreement."
+                answers[q.id] = "Not discussed"
         
         return {
             "summary": "Patient was engaged and demonstrated good understanding of discharge instructions. They expressed confidence in managing care at home and provided specific availability for follow-up appointments. No major concerns identified.",

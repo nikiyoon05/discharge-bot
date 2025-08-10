@@ -6,6 +6,7 @@ Handles EMR file uploads, parsing, and visit summary generation
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 from typing import Optional
+from pydantic import BaseModel
 import base64
 import os
 import logging
@@ -21,6 +22,59 @@ from ..services.database_service import database_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+class PatientUpdateRequest(BaseModel):
+    admission_date: Optional[str] = None
+
+
+def _dedupe_medications(med_list):
+    """Deduplicate medications by normalized name + dosage + frequency.
+    Prefer the entry with the most informative dosage/frequency (longest strings).
+    Works with EMR Medication pydantic objects.
+    """
+    if not med_list:
+        return []
+
+    def norm(text):
+        if not text:
+            return ''
+        return str(text).strip().lower()
+
+    # First pass: remove exact duplicates by (name, dosage, frequency)
+    unique_map = {}
+    for med in med_list:
+        try:
+            name = norm(getattr(med, 'name', None))
+            dosage = norm(getattr(med, 'dosage', None))
+            frequency = norm(getattr(med, 'frequency', None))
+            key = (name, dosage, frequency)
+            # Prefer more informative (longer) dosage/frequency strings
+            if key not in unique_map:
+                unique_map[key] = med
+            else:
+                current = unique_map[key]
+                curr_len = len(norm(getattr(current, 'dosage', ''))) + len(norm(getattr(current, 'frequency', '')))
+                new_len = len(dosage) + len(frequency)
+                if new_len > curr_len:
+                    unique_map[key] = med
+        except Exception:
+            # If anything odd, just keep the item
+            unique_map[id(med)] = med
+
+    exact_unique = list(unique_map.values())
+
+    # Second pass: collapse entries with same name but different dosage/frequency by keeping the most informative one
+    name_map = {}
+    for med in exact_unique:
+        name = norm(getattr(med, 'name', None))
+        score = len(norm(getattr(med, 'dosage', ''))) + len(norm(getattr(med, 'frequency', '')))
+        if name not in name_map:
+            name_map[name] = (med, score)
+        else:
+            if score > name_map[name][1]:
+                name_map[name] = (med, score)
+
+    return [pair[0] for pair in name_map.values()]
 
 @router.post("/upload", response_model=EMRParseResponse)
 async def upload_emr_file(
@@ -101,6 +155,12 @@ async def upload_emr_file(
                 gender="Male"
             )
         
+        # Deduplicate medications collected across documents
+        try:
+            all_medications = _dedupe_medications(all_medications)
+        except Exception as e:
+            logger.warning(f"Medication deduplication failed: {e}")
+
         parsed_data = ParsedEMRData(
             patient_demographics=patient_demographics,
             conditions=[],
@@ -213,4 +273,22 @@ async def get_discharge_summary(patient_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve discharge summary: {str(e)}"
+        )
+
+@router.put("/patient/{patient_id}")
+async def update_patient(patient_id: str, update_data: PatientUpdateRequest):
+    """
+    Update patient information (admission date, etc.)
+    """
+    try:
+        success = database_service.update_patient(patient_id, update_data.dict(exclude_unset=True))
+        if success:
+            return {"success": True, "message": f"Patient {patient_id} updated successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Patient not found")
+    except Exception as e:
+        logger.error(f"Error updating patient: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update patient: {str(e)}"
         )

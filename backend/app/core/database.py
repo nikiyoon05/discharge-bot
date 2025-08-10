@@ -25,6 +25,9 @@ class Patient(Base):
     name = Column(String, nullable=False)
     mrn = Column(String, unique=True, index=True)
     
+    # Patient details
+    admission_date = Column(String, nullable=True)  # Store as ISO date string
+    
     # File storage
     ehr_file_path = Column(String, nullable=True)
     doctor_notes_path = Column(String, nullable=True)

@@ -11,7 +11,7 @@ import {
   FileText,
   Stethoscope,
   Pill,
-  Activity,
+   Activity,
   Calendar,
   User,
   Heart,
@@ -20,7 +20,8 @@ import {
   Download,
   FileJson,
   AlertCircle,
-  X
+   X,
+   MessageSquare
 } from 'lucide-react';
 import { useRecoilValue, useSetRecoilState } from 'recoil';
 import { currentPatientState, ehrDataState, dashboardState } from '@/store/atoms';
@@ -92,9 +93,9 @@ export default function PatientEHRChart() {
   const [uploadedNotes, setUploadedNotes] = useState<File | null>(null);
   const [uploadedSummary, setUploadedSummary] = useState<File | null>(null);
   
-  const [ehrFileName, setEhrFileName] = useState<string | null>(null);
-  const [notesFileName, setNotesFileName] = useState<string | null>(null);
-  const [summaryFileName, setSummaryFileName] = useState<string | null>(null);
+   const [ehrFileName, setEhrFileName] = useState<string | null>(null);
+   const [notesFileName, setNotesFileName] = useState<string | null>(null);
+   const [summaryFileName, setSummaryFileName] = useState<string | null>(null);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: boolean}>({
@@ -127,7 +128,7 @@ export default function PatientEHRChart() {
               'patient-instructions': 'ready'
             }));
 
-            // Set uploaded file names and progress if they exist
+            // Set uploaded file names and progress if they exist; also persist to localStorage for UX continuity
             const uploadedFiles = result.data.uploaded_files;
             if (uploadedFiles) {
               if (uploadedFiles.ehr_file) {
@@ -143,11 +144,33 @@ export default function PatientEHRChart() {
                 setUploadProgress(prev => ({ ...prev, summary: true }));
               }
             }
+            try {
+              localStorage.setItem(`ehr_upload_names_${patient.id}` , JSON.stringify({
+                ehr: uploadedFiles?.ehr_file ? 'EHR Data' : null,
+                notes: uploadedFiles?.doctor_notes ? 'Doctor Notes' : null,
+                summary: uploadedFiles?.discharge_summary ? 'Discharge Summary' : null,
+              }));
+            } catch {}
           }
         }
       } catch (error) {
         console.log('No existing patient data found');
       }
+      // Fallback: show any locally remembered filenames so the UI doesn't reset to blank
+      try {
+        const cached = JSON.parse(localStorage.getItem(`ehr_upload_names_${patient.id}`) || 'null');
+        if (cached) {
+          if (!ehrFileName && cached.ehr) setEhrFileName(cached.ehr);
+          if (!notesFileName && cached.notes) setNotesFileName(cached.notes);
+          if (!summaryFileName && cached.summary) setSummaryFileName(cached.summary);
+          setUploadProgress(prev => ({
+            ...prev,
+            ehr: !!cached.ehr || prev.ehr,
+            notes: !!cached.notes || prev.notes,
+            summary: !!cached.summary || prev.summary,
+          }));
+        }
+      } catch {}
     };
 
     loadPatientData();
@@ -176,6 +199,13 @@ export default function PatientEHRChart() {
       [fileType]: true
     }));
 
+    // Persist file name hint so it shows after navigation
+    try {
+      const key = `ehr_upload_names_${patient.id}`;
+      const prev = JSON.parse(localStorage.getItem(key) || '{}');
+      prev[fileType] = file.name;
+      localStorage.setItem(key, JSON.stringify(prev));
+    } catch {}
     toast.success(`${fileType.toUpperCase()} file uploaded: ${file.name}`);
   };
 
@@ -206,6 +236,14 @@ export default function PatientEHRChart() {
       ...prev,
       [fileType]: false
     }));
+
+    // Clear persisted name
+    try {
+      const key = `ehr_upload_names_${patient.id}`;
+      const prev = JSON.parse(localStorage.getItem(key) || '{}');
+      prev[fileType] = null;
+      localStorage.setItem(key, JSON.stringify(prev));
+    } catch {}
 
     toast.success(`${fileType.toUpperCase()} file removed`);
   };
@@ -283,6 +321,14 @@ export default function PatientEHRChart() {
         }));
         
         setProcessingStatus('Complete! All files processed successfully.');
+        // Persist server-acknowledged file presence
+        try {
+          localStorage.setItem(`ehr_upload_names_${patient.id}`, JSON.stringify({
+            ehr: ehrFileName || 'EHR Data',
+            notes: notesFileName || 'Doctor Notes',
+            summary: summaryFileName || 'Discharge Summary',
+          }));
+        } catch {}
         toast.success('All files uploaded and processed with AI!');
       } else {
         throw new Error(result.error || 'Failed to parse EMR files');
@@ -301,6 +347,34 @@ export default function PatientEHRChart() {
     const demographics = backendData.patient_demographics;
     const visitSummary = backendData.visit_summary;
     
+    // Deduplicate medications defensively on the client as well
+    const meds = Array.isArray(backendData.medications) ? backendData.medications : [];
+    const dedupedMeds = (() => {
+      const seen = new Map<string, any>();
+      const norm = (s: any) => (s ? String(s).trim().toLowerCase() : '');
+      for (const m of meds) {
+        const key = `${norm(m.name)}|${norm(m.dosage)}|${norm(m.frequency)}`;
+        if (!seen.has(key)) {
+          seen.set(key, m);
+        } else {
+          const curr = seen.get(key);
+          const score = (norm(m.dosage).length + norm(m.frequency).length);
+          const currScore = (norm(curr.dosage).length + norm(curr.frequency).length);
+          if (score > currScore) seen.set(key, m);
+        }
+      }
+      // Also collapse by name to single best entry
+      const byName = new Map<string, any>();
+      for (const m of Array.from(seen.values())) {
+        const n = norm(m.name);
+        const score = (norm(m.dosage).length + norm(m.frequency).length);
+        if (!byName.has(n) || score > (norm(byName.get(n).dosage).length + norm(byName.get(n).frequency).length)) {
+          byName.set(n, m);
+        }
+      }
+      return Array.from(byName.values());
+    })();
+
     return {
       connectionStatus: 'demo' as const,
       lastSync: new Date(backendData.parsed_at),
@@ -318,18 +392,14 @@ export default function PatientEHRChart() {
       primaryDiagnosis: backendData.conditions[0]?.display || 'Primary diagnosis from uploaded file',
       secondaryDiagnoses: backendData.conditions.slice(1, 4).map((c: any) => c.display || 'Secondary diagnosis'),
       
-      currentMedications: backendData.medications.slice(0, 6).map((med: any) => ({
+      currentMedications: dedupedMeds.slice(0, 12).map((med: any) => ({
         name: med.name,
         dosage: med.dosage || 'As prescribed',
         frequency: med.frequency || 'As directed'
       })),
       
-      recentVitals: backendData.vital_signs.slice(0, 4).map((vital: any) => ({
-        type: vital.type,
-        value: vital.value,
-        timestamp: new Date(vital.timestamp),
-        status: vital.status || 'normal' as const
-      })),
+      // Vitals intentionally omitted from UI per request; still map if present for potential future use
+      recentVitals: [],
       
       recentLabs: backendData.lab_results.slice(0, 3).map((lab: any) => ({
         test: lab.test_name,
@@ -353,11 +423,11 @@ export default function PatientEHRChart() {
           author: 'AI Assistant',
           content: [
             visitSummary.assessment_and_plan,
-            '\n\nKey Findings:',
+            '\n\nKey Findings:\n',
             visitSummary.key_findings?.map((f: string) => `• ${f}`).join('\n') || 'None documented',
-            '\n\nDischarge Readiness:',
+            '\n\nDischarge Readiness:\n',
             visitSummary.discharge_readiness_factors?.map((f: string) => `• ${f}`).join('\n') || 'Under evaluation',
-            '\n\nFollow-up Recommendations:',
+            '\n\nFollow-up Recommendations:\n',
             visitSummary.follow_up_recommendations?.map((f: string) => `• ${f}`).join('\n') || 'To be determined'
           ].join(''),
           timestamp: new Date(visitSummary.visit_date),
@@ -633,7 +703,7 @@ export default function PatientEHRChart() {
       {ehrData && ehrData?.demographics && (
         <div className="space-y-6">
           {/* Top section: Demographics and Medications in grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="clinical-card">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
@@ -663,35 +733,49 @@ export default function PatientEHRChart() {
               </CardContent>
             </Card>
 
-            <Card className="clinical-card">
+            {/* Mini AI Chat Panel */}
+            <Card className="clinical-card col-span-2 lg:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5" />
-                  Recent Vitals
+                  <MessageSquare className="h-5 w-5" />
+                  Ask AI about this chart
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {ehrData?.recentVitals.length > 0 ? ehrData?.recentVitals.map((vital, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <span className="text-sm">{vital.type}</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={getVitalStatus(vital.status)}>
-                        {vital.value}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {formatTimeAgo(vital.timestamp)}
-                      </span>
-                    </div>
-                  </div>
-                )) : (
-                  <p className="text-sm text-muted-foreground">No vital signs available</p>
-                )}
+              <CardContent>
+                <MiniAIAssistant patientId={patient.id} />
               </CardContent>
             </Card>
           </div>
 
-          {/* Full-width Clinical Notes Section */}
+          {/* Full-width Summary and Notes Section */}
           <div className="w-full space-y-6">
+          {/* Brief AI Summary Card */}
+          {ehrData?.clinicalNotes?.some(n => n.type === 'AI Visit Summary') && (
+            <Card className="clinical-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Brief AI Summary for Discharge
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="prose prose-sm max-w-none">
+                  {ehrData.clinicalNotes
+                    .filter(n => n.type === 'AI Visit Summary')
+                    .slice(0, 1)
+                    .map((n, i) => (
+                      <div key={i} className="space-y-2 leading-relaxed">
+                        {n.content.split('\n').map((line, idx) => (
+                          <div key={idx} className={
+                            line.startsWith('•') ? 'ml-5' : ''
+                          }>{line}</div>
+                        ))}
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
           {/* Diagnoses */}
           <Card className="clinical-card">
             <CardHeader>
@@ -722,7 +806,7 @@ export default function PatientEHRChart() {
             </CardContent>
           </Card>
 
-          {/* Current Medications */}
+          {/* Current Medications (deduped) */}
           <Card className="clinical-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -912,6 +996,65 @@ export default function PatientEHRChart() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MiniAIAssistant({ patientId }: { patientId: string }) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [messages, setMessages] = React.useState<Array<{ sender: 'doctor' | 'ai_assistant'; message: string; timestamp: string }>>([]);
+  const wsRef = React.useRef<WebSocket | null>(null);
+
+  React.useEffect(() => {
+    const ws = new WebSocket(`ws://localhost:8000/api/chat/ws/${patientId}/doctor`);
+    wsRef.current = ws;
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg && (msg.sender === 'ai_assistant' || msg.sender === 'doctor')) {
+          setMessages((prev) => [...prev.slice(-49), msg]);
+        }
+      } catch {}
+    };
+    ws.onclose = () => {};
+    ws.onerror = () => {};
+    return () => ws.close();
+  }, [patientId]);
+
+  const send = () => {
+    const text = inputRef.current?.value?.trim();
+    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    const outgoing = {
+      id: crypto.randomUUID(),
+      sender: 'doctor' as const,
+      message: text,
+      timestamp: new Date().toISOString(),
+    };
+    wsRef.current.send(JSON.stringify(outgoing));
+    setMessages((prev) => [...prev.slice(-49), outgoing]);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="h-40 overflow-y-auto rounded border bg-white p-2 text-sm">
+        {messages.length === 0 && (
+          <div className="text-muted-foreground">Ask a question about meds, notes, or discharge readiness…</div>
+        )}
+        {messages.map((m, idx) => (
+          <div key={idx} className={`mb-2 ${m.sender === 'doctor' ? 'text-right' : 'text-left'}`}>
+            <div className={`inline-block rounded px-2 py-1 ${m.sender === 'doctor' ? 'bg-primary/10' : 'bg-muted/50'}`}>
+              {m.message}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input ref={inputRef} placeholder="Ask AI…" onKeyDown={(e) => { if (e.key === 'Enter') send(); }} />
+        <Button type="button" size="sm" onClick={send}>
+          <MessageSquare className="h-4 w-4 mr-1" /> Ask
+        </Button>
+      </div>
     </div>
   );
 }

@@ -270,7 +270,7 @@ class AIService:
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=800,
-                    temperature=0.3
+                    temperature=0.5
                 )
                 
                 # Parse AI response into structured format
@@ -385,7 +385,7 @@ class AIService:
         
         return VisitSummary(
             visit_date=emr_data.parsed_at,
-            visit_type="EMR Upload Analysis",
+            visit_type="AI Summary",
             chief_complaint="Analysis of uploaded EMR data",
             assessment_and_plan=ai_response[:500] + "..." if len(ai_response) > 500 else ai_response,
             key_findings=key_findings[:5],  # Limit to 5
@@ -396,41 +396,73 @@ class AIService:
         )
 
     def _generate_template_visit_summary(self, emr_data: ParsedEMRData) -> VisitSummary:
-        """Fallback template-based visit summary"""
+        """Fallback template-based visit summary using uploaded context for variability"""
+        patient = emr_data.patient_demographics
+        meds = emr_data.medications or []
+        conds = emr_data.conditions or []
+        notes = emr_data.clinical_notes or []
+
+        # Pull a brief excerpt from the most recent uploaded note for context
+        note_excerpt = None
+        for n in reversed(notes):
+            content = (n.content or '').strip()
+            if content:
+                note_excerpt = content[:280]
+                break
+
+        med_names = [m.name for m in meds][:5]
+        cond_names = [getattr(c, 'display', None) or getattr(c, 'text', None) or 'Condition' for c in conds][:5]
+
+        assessment_lines = [
+            f"Patient {patient.name} ({patient.mrn}) with {len(conds)} documented conditions and {len(meds)} medications.",
+        ]
+        if cond_names:
+            assessment_lines.append(f"Key conditions: {', '.join(cond_names)}.")
+        if med_names:
+            assessment_lines.append(f"Active meds include: {', '.join(med_names)}.")
+        if note_excerpt:
+            assessment_lines.append(f"Recent documentation excerpt: '{note_excerpt}'")
+
+        key_findings = []
+        if cond_names:
+            key_findings.append(f"Primary conditions: {', '.join(cond_names)}")
+        if med_names:
+            key_findings.append(f"Medications: {', '.join(med_names)}")
+        if notes:
+            key_findings.append("Clinical notes reviewed from uploaded documents")
+        key_findings.append("EMR data successfully imported and structured")
+
+        discharge_factors = [
+            "Clinically appropriate for discharge planning pending team review",
+            "Medication list available for reconciliation",
+            "Demographics confirmed",
+        ]
+
+        follow_up = [
+            "Schedule follow-up with primary care within 7 days",
+            "Provide patient-friendly medication instructions",
+        ]
+
+        risk_factors = []
+        if len(meds) >= 5:
+            risk_factors.append("Polypharmacy (5+ medications)")
+        if len(conds) >= 3:
+            risk_factors.append("Multiple comorbidities")
+
+        med_changes = [
+            "Review uploaded medication list for accuracy",
+        ]
+
         return VisitSummary(
             visit_date=emr_data.parsed_at,
-            visit_type="EMR Data Analysis",
-            chief_complaint="Uploaded EMR file analysis for discharge planning",
-            assessment_and_plan=f"Patient {emr_data.patient_demographics.name} has {len(emr_data.conditions)} documented conditions and {len(emr_data.medications)} medications. Clinical data successfully parsed from uploaded EMR file.",
-            key_findings=[
-                f"{len(emr_data.conditions)} active medical conditions",
-                f"{len(emr_data.medications)} current medications",
-                f"{len(emr_data.vital_signs)} recent vital sign measurements",
-                f"{len(emr_data.lab_results)} recent laboratory results",
-                "EMR data successfully imported and structured"
-            ],
-            discharge_readiness_factors=[
-                "Clinical data available for review",
-                "Medication list documented",
-                "Patient demographics confirmed",
-                "Ready for discharge planning workflow"
-            ],
-            follow_up_recommendations=[
-                "Review all medications for interactions",
-                "Confirm discharge diagnoses with clinical team",
-                "Schedule appropriate follow-up appointments",
-                "Provide patient education materials"
-            ],
-            risk_factors=[
-                "Multiple medications requiring monitoring",
-                "Complex medical history requiring careful transition",
-                "Need for medication reconciliation"
-            ],
-            medication_changes=[
-                "Review uploaded medication list for accuracy",
-                "Confirm current vs discontinued medications",
-                "Check for potential drug interactions"
-            ]
+            visit_type="Template Summary",
+            chief_complaint="Analysis of uploaded EMR data",
+            assessment_and_plan=" ".join(assessment_lines),
+            key_findings=key_findings[:5],
+            discharge_readiness_factors=discharge_factors[:5],
+            follow_up_recommendations=follow_up[:5],
+            risk_factors=risk_factors[:5],
+            medication_changes=med_changes[:5]
         )
     
     def _calculate_age(self, birth_date: str) -> int:

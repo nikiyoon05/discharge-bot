@@ -1,4 +1,4 @@
-import { atom, selector } from 'recoil';
+import { atom, selector, DefaultValue } from 'recoil';
 
 // Auth state
 export const authUserState = atom({
@@ -34,6 +34,33 @@ export const currentPatientState = atom({
     allergies: ['Penicillin', 'Sulfa'],
     language: 'en', // Patient's preferred language
   },
+  effects: [
+    ({ setSelf, getPromise }) => {
+      // Load stored admission date from backend on initialization
+      const loadStoredAdmissionDate = async () => {
+        try {
+          const response = await fetch('http://localhost:8000/api/emr/patient/patient-001/data');
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data?.admission_date) {
+              setSelf(prev => {
+                if (prev instanceof DefaultValue) return prev;
+                return { 
+                  ...prev, 
+                  admissionDate: result.data.admission_date,
+                  los: Math.max(1, Math.floor((Date.now() - new Date(result.data.admission_date).getTime()) / (1000 * 60 * 60 * 24)) + 1)
+                };
+              });
+            }
+          }
+        } catch (error) {
+          console.log('No stored admission date found, using default');
+        }
+      };
+      
+      loadStoredAdmissionDate();
+    }
+  ]
 });
 
 // Notification state

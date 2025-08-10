@@ -1,6 +1,6 @@
 import { useRecoilValue } from 'recoil';
 import { currentPatientState, notificationState, dashboardState } from '@/store/atoms';
-import { FileText, Globe, Pill, Calendar, MessageSquare, TrendingUp, Users, Database, Phone } from 'lucide-react';
+import { FileText, Globe, Pill, Calendar, MessageSquare, TrendingUp, Users, Database, Phone, CheckSquare } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,15 +22,6 @@ export default function Dashboard() {
       color: 'bg-cyan-500',
       status: dashboard['patient-ehr-chart'],
       category: 'clinical'
-    },
-    {
-      title: 'Discharge Summary',
-      description: 'AI-generated summary from Epic EMR data',
-      icon: FileText,
-      path: `/patient/${patient?.id}/summary`,
-      color: 'bg-blue-500',
-      status: 'not-generated',
-      category: 'documentation'
     },
     {
       title: 'Pre-Discharge Meeting',
@@ -58,6 +49,15 @@ export default function Dashboard() {
       color: 'bg-green-500',
       status: dashboard['patient-instructions'],
       category: 'education'
+    },
+    {
+      title: 'Call Center',
+      description: 'AI-powered calling for insurance, transportation, and family coordination',
+      icon: Phone,
+      path: `/patient/${patient?.id}/call-center`,
+      color: 'bg-blue-500',
+      status: 'coming-soon',
+      category: 'coordination'
     },
     {
       title: 'Post-Discharge Chat',

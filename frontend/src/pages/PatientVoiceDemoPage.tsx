@@ -8,6 +8,8 @@ export default function PatientVoiceDemoPage() {
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState<string>("");
   const recognitionRef = useRef<any>(null);
+  const speakingRef = useRef<boolean>(false);
+  const [conversation, setConversation] = useState<Array<{ speaker: 'bot' | 'patient'; text: string; ts: Date }>>([]);
 
   // Setup Web Speech API (browser STT)
   useEffect(() => {
@@ -23,7 +25,7 @@ export default function PatientVoiceDemoPage() {
           const res = event.results[i];
           if (res.isFinal) finalText += res[0].transcript;
         }
-        if (finalText) setTranscript(finalText);
+        if (finalText && !speakingRef.current) setTranscript(finalText.trim());
       };
       recognitionRef.current = recognition;
     }
@@ -45,13 +47,39 @@ export default function PatientVoiceDemoPage() {
   // When transcript updates meaningfully, send as a patient message to the meeting hook endpoint
   // This demo just emits an event; integrate as needed with your meeting flow.
   useEffect(() => {
-    if (!patientId || !transcript || !recording) return;
-    // Simple throttle by length
-    if (transcript.length < 8) return;
+    if (!patientId || !transcript || !recording || speakingRef.current) return;
+    if (transcript.length < 3) return;
+    const text = transcript;
     const channel = new BroadcastChannel(`meeting-${patientId}`);
-    channel.postMessage({ type: 'patient_message', text: transcript });
+    channel.postMessage({ type: 'patient_message', text });
     channel.close();
+    setConversation(prev => [...prev, { speaker: 'patient', text, ts: new Date() }]);
+    // Clear after send to avoid duplicate posts
+    setTranscript('');
   }, [transcript, recording, patientId]);
+
+  // Listen for speaking start/end to pause/resume STT
+  useEffect(() => {
+    if (!patientId) return;
+    const channel = new BroadcastChannel(`meeting-${patientId}`);
+    channel.onmessage = (event) => {
+      const data = event.data;
+      if (data?.type === 'speaking_start') {
+        speakingRef.current = true;
+        try { recognitionRef.current && recognitionRef.current.stop(); } catch {}
+      }
+      if (data?.type === 'speaking_end') {
+        speakingRef.current = false;
+        if (recording) {
+          setTimeout(() => { try { recognitionRef.current && recognitionRef.current.start(); } catch {} }, 350);
+        }
+      }
+      if (data?.type === 'bot_message' && typeof data.text === 'string') {
+        setConversation(prev => [...prev, { speaker: 'bot', text: data.text, ts: new Date() }]);
+      }
+    };
+    return () => channel.close();
+  }, [patientId, recording]);
 
   return (
     <Card className="clinical-card">
@@ -71,6 +99,18 @@ export default function PatientVoiceDemoPage() {
         <div className="text-sm">
           <p className="font-medium">Live Transcript (Patient):</p>
           <div className="mt-2 p-3 bg-muted rounded min-h-[80px]">{transcript || '...'}</div>
+        </div>
+        <div className="text-sm">
+          <p className="font-medium">Conversation (Bot + You):</p>
+          <div className="mt-2 p-3 bg-muted rounded h-40 overflow-y-auto space-y-2">
+            {conversation.map((m, i) => (
+              <div key={i} className={`text-sm ${m.speaker === 'bot' ? 'text-blue-800' : 'text-green-800'}`}>
+                <span className="font-semibold mr-1">{m.speaker === 'bot' ? 'Bot' : 'You'}:</span>
+                <span>{m.text}</span>
+              </div>
+            ))}
+            {conversation.length === 0 && <div className="text-xs text-muted-foreground">Conversation will appear here.</div>}
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">This demo uses the browser SpeechRecognition API. In production, swap with a HIPAA-compliant STT provider.</p>
       </CardContent>

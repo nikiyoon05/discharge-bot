@@ -20,9 +20,12 @@ class ConnectionManager:
         if client_id in self.active_connections:
             del self.active_connections[client_id]
 
-    async def broadcast(self, message: str):
-        for connection in self.active_connections.values():
-            await connection.send_text(message)
+    async def broadcast_patient(self, patient_id: str, message: str):
+        # Only send to connections for the same patient_id
+        prefix = f"{patient_id}_"
+        for cid, connection in self.active_connections.items():
+            if cid.startswith(prefix):
+                await connection.send_text(message)
 
 manager = ConnectionManager()
 router = APIRouter()
@@ -59,10 +62,10 @@ async def websocket_endpoint(
             chat_history[patient_id].append(message_data)
             
             # Broadcast the new message to all clients for this patient
-            await manager.broadcast(json.dumps(message_data))
+            await manager.broadcast_patient(patient_id, json.dumps(message_data))
             
-            # If the message is from the patient, generate an AI response
-            if message_data.get("sender") == "patient":
+            # If the message is from the patient OR doctor, generate an AI response
+            if message_data.get("sender") in ("patient", "doctor"):
                 # Get patient's EMR data for context
                 patient_data = db_service.get_patient_data(patient_id)
                 emr_data_dict = patient_data.get("emr_data") if patient_data else None
@@ -83,7 +86,7 @@ async def websocket_endpoint(
                 
                 # Add AI message to history and broadcast it
                 chat_history[patient_id].append(ai_message)
-                await manager.broadcast(json.dumps(ai_message))
+                await manager.broadcast_patient(patient_id, json.dumps(ai_message))
 
     except WebSocketDisconnect:
         manager.disconnect(client_id)

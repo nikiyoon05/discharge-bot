@@ -268,7 +268,7 @@ export default function DischargeMeeting() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs text-gray-500">Questions Answered</span>
-                      <span className="font-semibold">{Object.keys(extractedAnswers).length} / {questions.length}</span>
+                      <span className="font-semibold">{questions.filter(q => extractedAnswers[q.id] && extractedAnswers[q.id] !== 'Not discussed').length} / {questions.length}</span>
                     </div>
                   </div>
                   

@@ -16,6 +16,7 @@ import Index from "./pages/Index";
 import PatientList from "./pages/PatientList";
 import Dashboard from "./pages/Dashboard";
 import PatientSummary from "./pages/PatientSummary";
+import CallCenterPage from "./pages/CallCenterPage";
 import PatientInstructions from "./pages/PatientInstructions";
 
 import PatientSchedule from "./pages/PatientSchedule";
@@ -85,6 +86,16 @@ const App = () => (
                 <AuthRoute>
                   <AppLayout>
                     <PatientSummary />
+                  </AppLayout>
+                </AuthRoute>
+              } 
+            />
+            <Route 
+              path="/patient/:id/call-center" 
+              element={
+                <AuthRoute>
+                  <AppLayout>
+                    <CallCenterPage />
                   </AppLayout>
                 </AuthRoute>
               } 

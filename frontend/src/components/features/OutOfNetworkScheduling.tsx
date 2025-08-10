@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +23,7 @@ import {
   FileText,
   Users
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface PatientAvailability {
   preferredDays: string[];
@@ -72,15 +74,8 @@ interface CallTranscriptEntry {
 }
 
 export default function OutOfNetworkScheduling() {
-  const [patientAvailability, setPatientAvailability] = useState<PatientAvailability>({
-    preferredDays: ['Monday', 'Tuesday', 'Wednesday'],
-    preferredTimes: ['9:00 AM - 12:00 PM', '1:00 PM - 4:00 PM'],
-    unavailableDates: ['2024-08-15', '2024-08-22'],
-    timePreference: 'morning',
-    notes: 'Patient prefers appointments after 9 AM due to morning medications. Cannot do Fridays due to dialysis.',
-    capturedFrom: 'discharge_meeting',
-    lastUpdated: new Date(Date.now() - 10 * 60 * 1000)
-  });
+  const { id: patientId } = useParams<{ id: string }>();
+  const [patientAvailability, setPatientAvailability] = useState<PatientAvailability | null>(null);
 
   const [selectedClinic, setSelectedClinic] = useState<OutpatientClinic>({
     id: 'clinic_1',
@@ -106,6 +101,65 @@ export default function OutOfNetworkScheduling() {
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [liveTranscript]);
+
+  // Load availability captured from discharge meeting
+  useEffect(() => {
+    const API_BASE = (import.meta as any).env?.VITE_API_BASE || (typeof window !== 'undefined' && window.location && window.location.port === '8080' ? 'http://localhost:8000/api' : '/api');
+    let cancelled = false;
+    async function loadAvailability() {
+      if (!patientId) return;
+      try {
+        const resp = await fetch(`${API_BASE}/meeting/latest?patient_id=${encodeURIComponent(patientId)}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const answers = data.extracted_answers || {};
+        const availabilityText: string | undefined = answers['__availability__'] || answers['__availability_notes__'];
+        if (!availabilityText) {
+          if (!cancelled) setPatientAvailability(null);
+          return;
+        }
+        // Simple parsing heuristics
+        const daysAll = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+        const negative = /(not\s+free|can'?t|cannot|no\s+friday|no\s+mondays|except)/i;
+        const foundDays = daysAll.filter(d => new RegExp(d, 'i').test(availabilityText) && !new RegExp(`not\\s+(${d})`, 'i').test(availabilityText));
+        // Remove explicit negatives like "not free on Fridays"
+        const cleanedDays = foundDays.filter(d => !/friday/i.test(d) || !/friday/i.test(availabilityText) || !negative.test(availabilityText));
+        const times: string[] = [];
+        const timePref = /morning|afternoon|evening/i.exec(availabilityText)?.[0]?.toLowerCase() as 'morning'|'afternoon'|'evening'|undefined;
+        // Match formats like "9:00 AM - 12:00 PM"
+        const rangeMatch = availabilityText.match(/(\d{1,2}:?\d{0,2}\s?(?:AM|PM))\s*(?:-|to|–)\s*(\d{1,2}:?\d{0,2}\s?(?:AM|PM))/i);
+        if (rangeMatch) {
+          times.push(`${rangeMatch[1]} - ${rangeMatch[2]}`);
+        } else {
+          // Fallback: "9:00 to 12:00" or "9 to 12" (no AM/PM)
+          const alt = availabilityText.match(/(\d{1,2}(?::\d{2})?)\s*(?:-|to|–)\s*(\d{1,2}(?::\d{2})?)/i);
+          if (alt) {
+            const start = alt[1];
+            const end = alt[2];
+            times.push(`${start} - ${end}`);
+          }
+        }
+        if (!times.length && timePref) {
+          if (timePref === 'morning') times.push('9:00 AM - 12:00 PM');
+          if (timePref === 'afternoon') times.push('1:00 PM - 4:00 PM');
+          if (timePref === 'evening') times.push('5:00 PM - 7:00 PM');
+        }
+        if (!cancelled) setPatientAvailability({
+          preferredDays: cleanedDays.length ? cleanedDays : [],
+          preferredTimes: times,
+          unavailableDates: [],
+          timePreference: (timePref as any) || 'flexible',
+          notes: availabilityText,
+          capturedFrom: 'discharge_meeting',
+          lastUpdated: new Date(),
+        });
+      } catch {
+        // ignore
+      }
+    }
+    void loadAvailability();
+    return () => { cancelled = true; };
+  }, [patientId]);
 
   const startCall = () => {
     const newCall: CallLog = {
@@ -303,48 +357,56 @@ export default function OutOfNetworkScheduling() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Patient Availability & Clinic Info */}
         <div className="space-y-4">
-          <Card className="clinical-card">
+            <Card className="clinical-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
                 Patient Availability
               </CardTitle>
-              <p className="text-sm text-muted-foreground">Captured from discharge meeting</p>
+              <p className="text-sm text-muted-foreground">
+                {patientAvailability ? 'Captured from discharge meeting' : 'No availability captured yet from discharge meeting'}
+              </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Preferred Days</label>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {patientAvailability.preferredDays.map(day => (
-                    <Badge key={day} variant="outline" className="text-xs">
-                      {day}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium">Preferred Times</label>
-                <div className="space-y-1 mt-1">
-                  {patientAvailability.preferredTimes.map(time => (
-                    <div key={time} className="text-sm bg-muted/50 p-2 rounded-sm">
-                      {time}
+              {patientAvailability ? (
+                <>
+                  <div>
+                    <label className="text-sm font-medium">Preferred Days</label>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {patientAvailability.preferredDays.length ? patientAvailability.preferredDays.map(day => (
+                        <Badge key={day} variant="outline" className="text-xs">
+                          {day}
+                        </Badge>
+                      )) : <div className="text-sm text-muted-foreground">—</div>}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              <div>
-                <label className="text-sm font-medium">Notes</label>
-                <p className="text-sm text-muted-foreground mt-1 p-2 bg-muted/50 rounded-sm">
-                  {patientAvailability.notes}
-                </p>
-              </div>
+                  <div>
+                    <label className="text-sm font-medium">Preferred Times</label>
+                    <div className="space-y-1 mt-1">
+                      {patientAvailability.preferredTimes.length ? patientAvailability.preferredTimes.map(time => (
+                        <div key={time} className="text-sm bg-muted/50 p-2 rounded-sm">
+                          {time}
+                        </div>
+                      )) : <div className="text-sm text-muted-foreground">—</div>}
+                    </div>
+                  </div>
 
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <CheckCircle className="h-3 w-3" />
-                Captured from discharge meeting {Math.floor((Date.now() - patientAvailability.lastUpdated.getTime()) / (1000 * 60))} minutes ago
-              </div>
+                  <div>
+                    <label className="text-sm font-medium">Notes</label>
+                    <p className="text-sm text-muted-foreground mt-1 p-2 bg-muted/50 rounded-sm">
+                      {patientAvailability.notes}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle className="h-3 w-3" />
+                    Captured from discharge meeting {Math.floor((Date.now() - patientAvailability.lastUpdated.getTime()) / (1000 * 60))} minutes ago
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground">Availability will appear here after it is captured in the discharge meeting.</div>
+              )}
             </CardContent>
           </Card>
 
