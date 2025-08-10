@@ -14,7 +14,7 @@ export default function DischargeMeeting() {
   const { id: patientId } = useParams<{ id: string }>();
   const { status, questions, conversation, summary, extractedAnswers, actions } = useDischargeMeeting();
   const [activeTab, setActiveTab] = useState('questions');
-  const conversationEndRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   
   const [newQuestion, setNewQuestion] = useState('');
   const [newQuestionCategory, setNewQuestionCategory] = useState<DischargeQuestion['category']>('other');
@@ -28,8 +28,24 @@ export default function DischargeMeeting() {
   }, [status]);
 
   useEffect(() => {
-    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = transcriptRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [conversation]);
+
+  // Listen for patient voice messages from the demo tab via BroadcastChannel
+  useEffect(() => {
+    if (!patientId) return;
+    const channel = new BroadcastChannel(`meeting-${patientId}`);
+    channel.onmessage = (event) => {
+      const data = event.data;
+      if (data && data.type === 'patient_message' && typeof data.text === 'string') {
+        actions.addConversationMessage({ speaker: 'patient', content: data.text });
+      }
+    };
+    return () => channel.close();
+  }, [patientId, actions]);
 
   const handleAddQuestion = () => {
     if (newQuestion.trim()) {
@@ -69,6 +85,13 @@ export default function DischargeMeeting() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={status === 'in-progress' ? "default" : "secondary"}>{status.replace('-', ' ')}</Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => patientId && window.open(`/patient/${patientId}/discharge-meeting/patient-demo`, '_blank')}
+          >
+            Open Patient Voice Demo
+          </Button>
           {status === 'not-started' && (
             <Button onClick={() => actions.startMeeting(patientId!)} className="clinical-button-primary">Start Meeting</Button>
           )}
@@ -86,7 +109,7 @@ export default function DischargeMeeting() {
               <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Live Transcript</CardTitle>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col">
-              <div className="bg-muted/50 rounded-sm p-4 flex-grow h-0 overflow-y-auto space-y-4">
+              <div ref={transcriptRef} className="bg-muted/50 rounded-sm p-4 flex-grow h-0 overflow-y-auto space-y-4">
                 {conversation.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
                     <MessageSquare className="h-12 w-12 mb-4" />
@@ -102,12 +125,13 @@ export default function DischargeMeeting() {
                     <div className={`flex-1 max-w-[80%] ${message.speaker === 'patient' ? 'text-right' : ''}`}>
                       <div className={`p-3 rounded-sm ${ message.speaker === 'bot' ? 'bg-primary/10 border border-primary/20' : 'bg-green-50 border border-green-200'}`}>
                         <p className="text-sm">{message.content}</p>
+                        {/* Speaking indicator removed for stability */}
                         <span className="text-xs text-muted-foreground mt-1 block">{message.timestamp.toLocaleTimeString()}</span>
                       </div>
                     </div>
                   </div>
                 ))}
-                <div ref={conversationEndRef} />
+                {/* End of transcript */}
               </div>
               {status === 'in-progress' && (
                 <div className="mt-4 flex justify-center">

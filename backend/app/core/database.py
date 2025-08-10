@@ -72,6 +72,20 @@ class PatientInstructions(Base):
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class MeetingRecord(Base):
+    """Store pre-discharge meeting artifacts"""
+    __tablename__ = "meeting_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(String, index=True)
+    status = Column(String, default="not-started")  # not-started, in-progress, completed
+    transcript = Column(JSON, nullable=True)  # list of messages
+    summary = Column(Text, nullable=True)
+    extracted_answers = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 def create_tables():
     """Create all database tables"""
     Base.metadata.create_all(bind=engine)

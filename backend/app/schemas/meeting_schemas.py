@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 class MeetingQuestion(BaseModel):
     id: str
@@ -27,3 +27,13 @@ class MeetingSummaryRequest(BaseModel):
 class MeetingSummaryResponse(BaseModel):
     summary: str
     extracted_answers: dict[str, str] # question_id -> answer
+
+class ReactiveReplyRequest(BaseModel):
+    patient_id: str
+    transcript: List[dict]
+    last_patient_message: str
+    context_step: Optional[str] = None  # e.g., 'question', 'summary'
+
+class ReactiveReplyResponse(BaseModel):
+    reply: str
+    follow_up_needed: bool

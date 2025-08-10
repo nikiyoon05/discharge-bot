@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ConversationMessage {
@@ -7,6 +7,7 @@ export interface ConversationMessage {
   content: string;
   timestamp: Date;
   questionId?: string; // Optional field to link bot messages to specific questions
+  audioUrl?: string;   // Optional TTS audio URL for bot messages
 }
 
 export interface DischargeQuestion {
@@ -20,6 +21,7 @@ export interface DischargeQuestion {
 export type MeetingStatus = 'not-started' | 'in-progress' | 'completed';
 
 export const useDischargeMeeting = () => {
+  const API_BASE = (import.meta as any).env?.VITE_API_BASE || (typeof window !== 'undefined' && window.location && window.location.port === '8080' ? 'http://localhost:8000/api' : '/api');
   const [status, setStatus] = useState<MeetingStatus>('not-started');
   const [questions, setQuestions] = useState<DischargeQuestion[]>([
     // Teach-back Questions
@@ -40,6 +42,27 @@ export const useDischargeMeeting = () => {
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [summary, setSummary] = useState<string>('');
   const [extractedAnswers, setExtractedAnswers] = useState<Record<string, string>>({});
+  // Controlled conversation flow
+  const [planSteps, setPlanSteps] = useState<any[]>([]);
+  const [currentStepIndex, setCurrentStepIndex] = useState<number>(-1);
+  const [waitingForAnswer, setWaitingForAnswer] = useState<boolean>(false);
+  // Refs to always have latest state inside callbacks
+  const currentStepIndexRef = useRef<number>(currentStepIndex);
+  const waitingForAnswerRef = useRef<boolean>(waitingForAnswer);
+  const isSpeakingRef = useRef<boolean>(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Keep refs in sync
+  useEffect(() => {
+    currentStepIndexRef.current = currentStepIndex;
+  }, [currentStepIndex]);
+
+  useEffect(() => {
+    waitingForAnswerRef.current = waitingForAnswer;
+  }, [waitingForAnswer]);
+  const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
+
+  // Removed auto-kickoff on planSteps change to avoid duplicate first messages
 
   const addQuestion = (question: string, category: DischargeQuestion['category']) => {
     const newQuestion: DischargeQuestion = { id: uuidv4(), question, category, answered: false };
@@ -81,7 +104,7 @@ export const useDischargeMeeting = () => {
 
     try {
       // Step 2: Call the backend to get the AI-generated plan
-      const response = await fetch('/api/meeting/plan', {
+      const response = await fetch(`${API_BASE}/meeting/plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -104,24 +127,25 @@ export const useDischargeMeeting = () => {
         content: `Conversation plan generated successfully. Starting meeting with ${planResponse.plan.length} conversation steps...`
       });
       
-      // Step 4: Populate the conversation with the plan from the backend
-      const planMessages = planResponse.plan.map((step: any) => ({
-        speaker: 'bot',
-        content: step.content,
-        questionId: step.question_id, // Track which question this relates to
-      }));
-
-      // Add messages with realistic timing
-      for (const msg of planMessages) {
-        await new Promise(res => setTimeout(res, 1500)); // Slightly longer delay for realism
+      // Step 4: Controlled flow (one step at a time)
+      setPlanSteps(planResponse.plan);
+      setCurrentStepIndex(-1);
+      setWaitingForAnswer(false);
+      await new Promise(res => setTimeout(res, 200));
+      // Speak first step directly to avoid race
+      if (planResponse.plan.length > 0) {
+        const step = planResponse.plan[0];
+        const msg = { speaker: 'bot' as const, content: step.content, questionId: step.question_id };
         addConversationMessage(msg);
+        await playSpeech(msg.content);
+        if ((step as any).step_type === 'question' || String(step.content || '').trim().endsWith('?')) {
+          setWaitingForAnswer(true);
+          currentStepIndexRef.current = 0;
+          setCurrentStepIndex(0);
+        } else {
+          setCurrentStepIndex(0);
+        }
       }
-
-      // Add final system message
-      addConversationMessage({
-        speaker: 'system',
-        content: 'Conversation plan complete. Waiting for patient responses...'
-      });
       
     } catch (error) {
       console.error(error);
@@ -138,10 +162,159 @@ export const useDischargeMeeting = () => {
   const addConversationMessage = (message: Omit<ConversationMessage, 'id' | 'timestamp'>) => {
     const newMessage = { ...message, id: uuidv4(), timestamp: new Date() };
     setConversation(prev => [...prev, newMessage]);
+
+    console.log('[AddMessage]', newMessage, { waitingForAnswer: waitingForAnswerRef.current, currentStepIndex: currentStepIndexRef.current });
     
     // If this is a patient response, try to extract answers in real-time
     if (message.speaker === 'patient' && status === 'in-progress') {
+      // If bot is speaking, ignore input to avoid it hearing itself
+      if (isSpeakingRef.current) {
+        console.log('[IgnoredPatientWhileSpeaking]', newMessage.content);
+        return;
+      }
       extractAnswersFromLatestResponse(newMessage.content);
+      // Only advance if we are actually waiting for an answer to a question
+      if (!waitingForAnswerRef.current) {
+        return;
+      }
+      // First, react contextually to the patient's reply via backend
+      (async () => {
+        try {
+          const reactiveResp = await fetch(`${API_BASE}/meeting/react`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              patient_id: 'unknown',
+              transcript: conversation,
+              last_patient_message: newMessage.content,
+              context_step: 'question',
+            }),
+          });
+          if (reactiveResp.ok) {
+            const data = await reactiveResp.json();
+            const msg = { speaker: 'bot' as const, content: data.reply, questionId: undefined };
+            addConversationMessage(msg);
+            await playSpeech(msg.content);
+            // If follow-up needed, stay on current question
+            if (Boolean(data.follow_up_needed)) {
+              return;
+            }
+          }
+        } catch {}
+
+        // Clear waiting flag now that we acknowledged patient's reply
+        setWaitingForAnswer(false);
+        waitingForAnswerRef.current = false;
+
+        // Compute next step and set index immediately to avoid races with TTS
+        const nextIndex = currentStepIndexRef.current + 1;
+        console.log('[PatientReply] advancing to index', nextIndex, 'planSteps length', planSteps.length);
+        setTimeout(async () => {
+          if (nextIndex >= planSteps.length) return;
+          const step = planSteps[nextIndex];
+          console.log('[NextStep]', step);
+          const msg = { speaker: 'bot' as const, content: step.content, questionId: step.question_id };
+          // Set current step immediately
+          currentStepIndexRef.current = nextIndex;
+          setCurrentStepIndex(nextIndex);
+          // Pre-mark waiting if this is a question
+          const requiresAnswer = (step as any).step_type === 'question' || String(step.content || '').trim().endsWith('?');
+          if (requiresAnswer) {
+            setWaitingForAnswer(true);
+            waitingForAnswerRef.current = true;
+          }
+          addConversationMessage(msg);
+          await playSpeech(msg.content);
+          if (!requiresAnswer) {
+            // auto-advance further after non-question
+            setTimeout(() => { void playNextStep(); }, 200);
+          }
+        }, 150);
+      })();
+    }
+  };
+
+  // Synthesize bot speech using backend ElevenLabs endpoint (with caching)
+  const speakBot = async (text: string): Promise<string | undefined> => {
+    try {
+      const url = `${API_BASE}/voice/speak?text=${encodeURIComponent(text)}`;
+      // Stream as a blob and create an object URL
+      const resp = await fetch(url, { method: 'POST' });
+      if (!resp.ok) return undefined;
+      const blob = await resp.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      return objectUrl;
+    } catch {
+      return undefined;
+    }
+  };
+
+  // Play TTS for last bot message (conservative: only key steps)
+  const playBotIfNeeded = async (msg: { speaker: 'bot'; content: string }) => {
+    await playSpeech(msg.content);
+  };
+
+  // Centralized audio playback to avoid overlaps and echo
+  const playSpeech = async (text: string): Promise<void> => {
+    try {
+      const url = await speakBot(text);
+      if (!url) return;
+      // Stop any current playback
+      if (currentAudioRef.current) {
+        try { currentAudioRef.current.pause(); } catch {}
+        currentAudioRef.current.src = '';
+        try { currentAudioRef.current.load(); } catch {}
+      }
+      const audio = new Audio(url);
+      currentAudioRef.current = audio;
+      isSpeakingRef.current = true;
+      await new Promise<void>((resolve) => {
+        audio.addEventListener('ended', () => { isSpeakingRef.current = false; resolve(); });
+        audio.addEventListener('error', () => { isSpeakingRef.current = false; resolve(); });
+        audio.play().catch(() => { isSpeakingRef.current = false; resolve(); });
+      });
+    } catch {
+      isSpeakingRef.current = false;
+    }
+  };
+
+  // Determine if a step requires a patient answer
+  const stepRequiresAnswer = (step: any): boolean => {
+    if (!step) return false;
+    if (step.step_type === 'question') return true;
+    // Heuristic: treat content that ends with '?' as needing an answer
+    const c = String(step.content || '').trim();
+    return c.endsWith('?');
+  };
+
+  // Main step advancement routine
+  const playNextStep = async (): Promise<void> => {
+    if (isAdvancing) return;
+    // If we are waiting for answer, do not advance
+    if (waitingForAnswerRef.current) return;
+    const nextIndex = currentStepIndexRef.current + 1;
+    if (nextIndex >= planSteps.length) return;
+    setIsAdvancing(true);
+    try {
+      const step = planSteps[nextIndex];
+      const msg = { speaker: 'bot' as const, content: step.content, questionId: step.question_id };
+      // Set index immediately to avoid repeats while TTS plays
+      currentStepIndexRef.current = nextIndex;
+      setCurrentStepIndex(nextIndex);
+      // If this requires an answer, mark waiting before playing audio
+      if (stepRequiresAnswer(step)) {
+        setWaitingForAnswer(true);
+        waitingForAnswerRef.current = true;
+      }
+      addConversationMessage(msg);
+      await playBotIfNeeded(msg);
+      if (stepRequiresAnswer(step)) {
+        return;
+      }
+      // Auto-advance to next non-question step after a short delay
+      setTimeout(() => { void playNextStep(); }, 300);
+    } finally {
+      setIsAdvancing(false);
     }
   };
 
@@ -186,7 +359,7 @@ export const useDischargeMeeting = () => {
     });
 
     try {
-      const response = await fetch('/api/meeting/summarize', {
+      const response = await fetch(`${API_BASE}/meeting/summarize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

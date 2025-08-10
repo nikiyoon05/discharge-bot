@@ -3,6 +3,7 @@ from openai import OpenAI
 from typing import List
 from app.schemas.meeting_schemas import MeetingQuestion, ConversationStep
 from app.services.database_service import get_patient_summary # Assuming this function exists
+from app.core.database import SessionLocal, MeetingRecord
 
 class MeetingPlannerService:
     def __init__(self):
@@ -155,6 +156,45 @@ CONCLUSION (30 seconds):
 """
         return guide
 
+    def generate_reactive_reply(self, transcript: List[dict], last_patient_message: str, context_step: str | None) -> dict:
+        """
+        Generate a brief, empathetic acknowledgment and, if appropriate,
+        a short explanation or follow-up question based on the last patient message.
+        This keeps the conversation natural without jumping straight to the next scripted step.
+        """
+        if not os.getenv("OPENAI_API_KEY"):
+            # Simple rules-based fallback
+            text = last_patient_message.lower()
+            if any(k in text for k in ["don't understand", "do not understand", "confused", "explain", "not sure", "unclear"]):
+                return {"reply": "Thanks for letting me know. Let me explain that in simpler terms. It's important because it helps prevent complications after you leave. Does that make more sense now?", "follow_up_needed": True}
+            if any(k in text for k in ["no ", "not really", "i don't have", "i do not have"]):
+                return {"reply": "Thanks for sharing that. Let's talk through what you might need before you go so you're set up at home.", "follow_up_needed": False}
+            return {"reply": "Got it. Thank you. I'll make a quick note of that.", "follow_up_needed": False}
+
+        try:
+            prompt = (
+                "You are an empathetic clinician. Given the ongoing pre-discharge conversation transcript and the patient's last reply, "
+                "write a brief (1-2 sentences) acknowledgment and, only if needed, a short clarification or follow-up question. "
+                "Be concise, warm, and helpful. Respond as the clinician. Return JSON with keys: reply (string), follow_up_needed (boolean)."
+            )
+            import json
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": json.dumps({
+                        "transcript": transcript[-12:],  # last few turns for context
+                        "last_patient_message": last_patient_message,
+                        "context_step": context_step,
+                    })},
+                ],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content)
+            return {"reply": data.get("reply", "Thanks for sharing that."), "follow_up_needed": bool(data.get("follow_up_needed", False))}
+        except Exception:
+            return {"reply": "Thanks for sharing that.", "follow_up_needed": False}
+
     def _generate_mock_plan(self, questions: List[MeetingQuestion]) -> List[ConversationStep]:
         plan = [
             ConversationStep(step_type='introduction', content="Hello! I'm calling to briefly go over a few things before your discharge to make sure you're all set."),
@@ -166,6 +206,30 @@ CONCLUSION (30 seconds):
         return plan
 
     def summarize_meeting(self, transcript: List[dict], questions: List[MeetingQuestion]) -> dict:
+        # Guard: if no patient messages, avoid LLM hallucinations
+        if not any(isinstance(m, dict) and m.get('speaker') == 'patient' for m in transcript):
+            answers = {q.id: "Not discussed" for q in questions}
+            empty_summary = "Meeting ended before patient responses were recorded. No answers could be extracted."
+            try:
+                db = SessionLocal()
+                record = MeetingRecord(
+                    patient_id='unknown',
+                    status='completed',
+                    transcript=transcript,
+                    summary=empty_summary,
+                    extracted_answers=answers,
+                )
+                db.add(record)
+                db.commit()
+            except Exception:
+                pass
+            finally:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            return {"summary": empty_summary, "extracted_answers": answers}
+
         prompt = self._build_summary_prompt(transcript, questions)
 
         if not os.getenv("OPENAI_API_KEY"):
@@ -183,10 +247,57 @@ CONCLUSION (30 seconds):
             )
             summary_data = response.choices[0].message.content
             import json
-            return json.loads(summary_data)
+            result = json.loads(summary_data)
+            # Persist meeting artifacts
+            try:
+                db = SessionLocal()
+                # Try to infer patient_id from any message metadata, else 'unknown'
+                inferred_patient_id = 'unknown'
+                if transcript:
+                    for msg in transcript:
+                        if isinstance(msg, dict) and 'patient_id' in msg:
+                            inferred_patient_id = str(msg['patient_id'])
+                            break
+                record = MeetingRecord(
+                    patient_id=inferred_patient_id,
+                    status='completed',
+                    transcript=transcript,
+                    summary=result.get('summary', ''),
+                    extracted_answers=result.get('extracted_answers', {}),
+                )
+                db.add(record)
+                db.commit()
+            except Exception:
+                pass
+            finally:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            return result
         except Exception as e:
             print(f"OpenAI API call for summary failed: {e}")
-            return self._generate_mock_summary(questions)
+            mock = self._generate_mock_summary(questions)
+            # Persist mock as well
+            try:
+                db = SessionLocal()
+                record = MeetingRecord(
+                    patient_id='unknown',
+                    status='completed',
+                    transcript=transcript,
+                    summary=mock.get('summary', ''),
+                    extracted_answers=mock.get('extracted_answers', {}),
+                )
+                db.add(record)
+                db.commit()
+            except Exception:
+                pass
+            finally:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            return mock
 
     def _build_summary_prompt(self, transcript: List[dict], questions: List[MeetingQuestion]) -> str:
         transcript_text = "\n".join([f"{msg['speaker']}: {msg['content']}" for msg in transcript])

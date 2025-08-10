@@ -9,7 +9,6 @@ import { Toaster as HotToaster } from 'react-hot-toast';
 // Layout components
 import TopNav from "@/components/common/TopNav";
 import PatientHeader from "@/components/common/PatientHeader";
-import CommSidebar from "@/components/common/CommSidebar";
 import AuthRoute from "@/components/auth/AuthRoute";
 
 // Pages
@@ -26,6 +25,7 @@ import OutOfNetworkSchedulingPage from "./pages/OutOfNetworkSchedulingPage";
 import SystemEpicIntegrationPage from "./pages/SystemEpicIntegrationPage";
 import PostDischargeChatPage from "./pages/PostDischargeChatPage";
 import PatientChatSimulationPage from "./pages/PatientChatSimulationPage";
+import PatientVoiceDemoPage from "./pages/PatientVoiceDemoPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,7 +38,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => (
     <div className="container max-w-screen-2xl mx-auto px-4 py-6">
       {children}
     </div>
-    <CommSidebar />
     <HotToaster
       position="top-right"
       toastOptions={{
@@ -119,6 +118,16 @@ const App = () => (
                   </AppLayout>
                 </AuthRoute>
               } 
+            />
+            <Route 
+              path="/patient/:id/discharge-meeting/patient-demo" 
+              element={
+                <AuthRoute>
+                  <AppLayout>
+                    <PatientVoiceDemoPage />
+                  </AppLayout>
+                </AuthRoute>
+              }
             />
             <Route 
               path="/patient/:id/out-of-network-scheduling" 

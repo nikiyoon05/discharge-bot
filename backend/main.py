@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import our modules
-from app.routers import emr, instructions, ehr, chat, meeting  # fhir, discharge, ai_services, conversation, calling
+from app.routers import emr, instructions, ehr, chat  # fhir, discharge, ai_services, conversation, calling
+from app.routers import meeting_router
+from app.routers import voice
 from app.core.config import settings
 from app.core.database import create_tables
 
@@ -46,7 +48,8 @@ app.include_router(emr.router, prefix="/api/emr", tags=["EMR File Processing"])
 app.include_router(instructions.router, prefix="/api/instructions", tags=["Patient Instructions"])
 app.include_router(ehr.router, prefix="/api/ehr", tags=["EHR"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
-app.include_router(meeting.router, prefix="/api/meeting", tags=["Meeting"])
+app.include_router(meeting_router.router, prefix="/api/meeting", tags=["Meeting"])
+app.include_router(voice.router, prefix="/api/voice", tags=["Voice"])
 
 @app.on_event("startup")
 async def startup_event():
