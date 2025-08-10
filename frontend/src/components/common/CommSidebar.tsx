@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { MessageSquare, Phone, PhoneCall, Send, X, ChevronRight } from 'lucide-react';
+import { MessageSquare, Phone, PhoneCall, Send, X, ChevronRight, Languages } from 'lucide-react';
 import { useRecoilState } from 'recoil';
 import { sidebarOpenState } from '@/store/atoms';
+import { usePatientLanguage } from '@/hooks/usePatientLanguage';
+import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -68,11 +70,26 @@ const mockVoiceCalls: VoiceCall[] = [
 export default function CommSidebar() {
   const [isOpen, setIsOpen] = useRecoilState(sidebarOpenState);
   const [newMessage, setNewMessage] = useState('');
+  const { currentLanguage, languageCode } = usePatientLanguage();
+  const { translateMessage, isTranslationAvailable, isTranslating } = useTranslation();
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (newMessage.trim()) {
-      // Here you would typically send the message via telecom service
-      console.log('Sending message:', newMessage);
+      let messageToSend = newMessage;
+      
+      // Translate message if patient language is not English
+      if (languageCode !== 'en' && isTranslationAvailable) {
+        try {
+          const result = await translateMessage(newMessage, 'doctor-to-patient');
+          messageToSend = result.translatedText;
+          console.log('Translated message:', result);
+        } catch (error) {
+          console.error('Translation failed:', error);
+        }
+      }
+      
+      // Here you would typically send the translated message via telecom service
+      console.log('Sending message:', messageToSend);
       setNewMessage('');
     }
   };
@@ -97,7 +114,16 @@ export default function CommSidebar() {
         }`}
       >
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="clinical-h2">Patient Communication</h3>
+          <div>
+            <h3 className="clinical-h2">Patient Communication</h3>
+            {languageCode !== 'en' && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                <Languages className="h-3 w-3" />
+                <span>Auto-translating to {currentLanguage.name}</span>
+                {!isTranslationAvailable && <span className="text-orange-600">(unavailable)</span>}
+              </div>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="icon"
@@ -157,8 +183,12 @@ export default function CommSidebar() {
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                   className="flex-1"
                 />
-                <Button onClick={handleSendMessage} size="icon">
-                  <Send className="h-4 w-4" />
+                <Button onClick={handleSendMessage} size="icon" disabled={isTranslating}>
+                  {isTranslating ? (
+                    <Languages className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>

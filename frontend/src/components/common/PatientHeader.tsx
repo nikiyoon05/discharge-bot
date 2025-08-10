@@ -1,10 +1,13 @@
 import { useRecoilValue } from 'recoil';
 import { currentPatientState } from '@/store/atoms';
-import { Calendar, Clock, AlertTriangle, User } from 'lucide-react';
+import { Calendar, Clock, AlertTriangle, User, Languages } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { usePatientLanguage } from '@/hooks/usePatientLanguage';
 
 export default function PatientHeader() {
   const patient = useRecoilValue(currentPatientState);
+  const { currentLanguage, languageOptions, setLanguage } = usePatientLanguage();
 
   if (!patient) return null;
 
@@ -26,6 +29,8 @@ export default function PatientHeader() {
     if (los <= 5) return 'status-warning';
     return 'status-danger';
   };
+
+
 
   return (
     <div className="sticky top-16 z-40 border-b-2 border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -52,6 +57,31 @@ export default function PatientHeader() {
             <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg border-2 ${getStatusColor(patient.los)}`}>
               <Clock className="h-4 w-4" />
               <span className="clinical-small font-semibold">LOS: {patient.los} days</span>
+            </div>
+
+            {/* Language Selector */}
+            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg border-2 border-primary/20 bg-primary/5">
+              <Languages className="h-4 w-4 text-primary" />
+              <Select value={patient.language} onValueChange={setLanguage}>
+                <SelectTrigger className="h-8 w-auto border-0 bg-transparent px-2 py-0 focus:ring-0 focus:ring-offset-0">
+                  <SelectValue>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-lg">{currentLanguage.flag}</span>
+                      <span className="clinical-small font-semibold">{currentLanguage.name}</span>
+                    </div>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {languageOptions.map((language) => (
+                    <SelectItem key={language.code} value={language.code}>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-lg">{language.flag}</span>
+                        <span>{language.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Unit */}

@@ -5,11 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Send, User, Bot } from 'lucide-react';
+import TranslatedMessage from '@/components/chat/TranslatedMessage';
+import { TranslationResult } from '@/services/translationService';
 
 interface Message {
+  id: string;
   sender: 'doctor' | 'patient' | 'ai_assistant';
   message: string;
   timestamp: string;
+  translationResult?: TranslationResult;
+  isTranslating?: boolean;
 }
 
 export default function PatientChatSimulationPage() {
@@ -24,8 +29,15 @@ export default function PatientChatSimulationPage() {
       ws.current = new WebSocket(`ws://localhost:8000/api/chat/ws/${id}/patient`);
 
       ws.current.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        setMessages((prevMessages) => [...prevMessages, message]);
+        const receivedMessage = JSON.parse(event.data);
+        
+        // Ignore messages sent by the patient to prevent duplicates
+        if (receivedMessage.sender === 'patient') {
+          return;
+        }
+
+        const messageWithId = { ...receivedMessage, id: crypto.randomUUID() };
+        setMessages((prevMessages) => [...prevMessages, messageWithId]);
       };
     }
 
@@ -41,11 +53,16 @@ export default function PatientChatSimulationPage() {
   const sendMessage = () => {
     if (inputMessage.trim() && ws.current) {
       const message: Message = {
+        id: crypto.randomUUID(),
         sender: 'patient',
         message: inputMessage,
         timestamp: new Date().toISOString(),
       };
       ws.current.send(JSON.stringify(message));
+
+      // Optimistically add the message to the UI
+      setMessages((prevMessages) => [...prevMessages, message]);
+      
       setInputMessage('');
     }
   };
@@ -61,21 +78,15 @@ export default function PatientChatSimulationPage() {
           <CardTitle>Chat with your Care Team</CardTitle>
         </CardHeader>
         <CardContent className="flex-grow overflow-y-auto p-4 space-y-4">
-          {messages.map((msg, index) => (
-            <div key={index} className={`flex items-start gap-3 ${msg.sender === 'patient' ? 'justify-end' : ''}`}>
-              {msg.sender !== 'patient' && (
-                <div className="bg-muted rounded-full p-2">
-                  {msg.sender === 'doctor' ? <User className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
-                </div>
-              )}
-              <div className={`p-3 rounded-lg max-w-lg ${
-                msg.sender === 'patient' ? 'bg-blue-500 text-white' : 'bg-muted'
-              }`}>
-                <p className="font-bold text-sm capitalize">{msg.sender.replace('_', ' ')}</p>
-                <p>{msg.message}</p>
-                <p className="text-xs text-muted-foreground mt-1">{new Date(msg.timestamp).toLocaleTimeString()}</p>
-              </div>
-            </div>
+          {messages.map((msg) => (
+            <TranslatedMessage
+              key={msg.id}
+              currentUser="patient"
+              sender={msg.sender}
+              originalMessage={msg.message}
+              translationResult={msg.translationResult}
+              timestamp={msg.timestamp}
+            />
           ))}
           <div ref={messagesEndRef} />
         </CardContent>
