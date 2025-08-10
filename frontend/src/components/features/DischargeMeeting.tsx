@@ -123,7 +123,7 @@ export default function DischargeMeeting() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="questions">Questions</TabsTrigger>
-              <TabsTrigger value="summary" disabled={status !== 'completed'}>Summary</TabsTrigger>
+              <TabsTrigger value="summary">Summary</TabsTrigger>
             </TabsList>
             <TabsContent value="questions">
               <Card className="clinical-card">
@@ -177,9 +177,44 @@ export default function DischargeMeeting() {
             </TabsContent>
             <TabsContent value="summary">
               <Card className="clinical-card">
-                <CardHeader><CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5"/>AI Summary</CardTitle></CardHeader>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5"/>
+                    AI Summary
+                  </CardTitle>
+                </CardHeader>
                 <CardContent>
-                  <p className="text-sm whitespace-pre-wrap">{summary || "No summary generated."}</p>
+                  {status === 'not-started' ? (
+                    <div className="text-center py-8">
+                      <FileText className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                      <p className="text-sm text-gray-600 font-medium mb-2">Meeting Summary Not Available</p>
+                      <p className="text-xs text-gray-500">
+                        The AI summary will be generated after the meeting is completed. 
+                        Start the meeting to begin the conversation with the patient.
+                      </p>
+                    </div>
+                  ) : status === 'in-progress' ? (
+                    <div className="text-center py-8">
+                      <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-yellow-100 flex items-center justify-center">
+                        <div className="h-6 w-6 rounded-full bg-yellow-400 animate-pulse"></div>
+                      </div>
+                      <p className="text-sm text-gray-600 font-medium mb-2">Meeting In Progress</p>
+                      <p className="text-xs text-gray-500">
+                        The conversation is currently active. The AI summary will be generated 
+                        when you click "End & Summarize" to complete the meeting.
+                      </p>
+                    </div>
+                  ) : status === 'completed' ? (
+                    <div>
+                      {summary ? (
+                        <p className="text-sm whitespace-pre-wrap">{summary}</p>
+                      ) : (
+                        <div className="text-center py-4">
+                          <p className="text-sm text-gray-600 italic">Summary generation failed or is still processing...</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             </TabsContent>
