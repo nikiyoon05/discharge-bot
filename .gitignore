@@ -60,3 +60,5 @@ backend/uploads/
 # SQLite
 *.sqlite3
 *.db
+db-journal
+/db/sessions/
